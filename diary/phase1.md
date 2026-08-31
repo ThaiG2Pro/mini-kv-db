@@ -3,8 +3,7 @@
 - **Thời lượng dự kiến:** 1-2 ngày · **thực tế:** ~1 buổi
 - **Bắt đầu:** 2026-08-31 · **Kết thúc:** 2026-08-31
 - **Trạng thái:** ✅ xong
-- **Commit:** _(repo đã `git init` nhưng chưa có commit nào — số đo dưới đây gắn với
-  cây làm việc ngày 2026-08-31; commit đầu tiên sẽ ghi hash vào đây)_
+- **Commit:** `a4af12b` — mọi số đo trong file này thuộc về cây làm việc của commit đó
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Sáu tháng sau đọc lại phải chạy lại được.
@@ -236,7 +235,7 @@ Ghi vào nợ kỹ thuật.
 ## Số đo
 
 **Lệnh:** `go test ./internal/pager -bench . -benchtime=200x -run XXX -count=1` ·
-**ngày:** 2026-08-31 · **máy:** WSL2 ext4-trên-VHD, i5-1235U · **commit:** _(chưa commit)_
+**ngày:** 2026-08-31 · **máy:** WSL2 ext4-trên-VHD, i5-1235U · **commit:** `a4af12b`
 
 ```console
 goos: linux

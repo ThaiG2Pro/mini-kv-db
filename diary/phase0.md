@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 0.5 ngày
 - **Bắt đầu:** 2026-08-31 · **Kết thúc:** 2026-08-31
 - **Trạng thái:** ✅ xong
-- **Commit:** _(chưa commit — repo mới `git init`)_
+- **Commit:** `faa9c82` — mọi số đo trong file này thuộc về cây làm việc của commit đó
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Sáu tháng sau đọc lại phải chạy lại được.
