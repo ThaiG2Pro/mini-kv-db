@@ -1,3 +1,8 @@
+---
+name: diary
+description: Quy tắc ghi nhật ký phase cho repo minidb (diary/phase*.md). Dùng khi ghi, cập nhật hoặc chốt một file nhật ký phase, khi ghi lại kết quả benchmark/test, hoặc khi đánh dấu một phase là xong.
+---
+
 # Skill: Ghi nhật ký phase của minidb
 
 Áp dụng mỗi khi làm việc trong repo này và có bất kỳ thứ gì cần ghi vào `diary/phase*.md`.
@@ -39,7 +44,8 @@ Hệ quả trực tiếp:
 | **Rút ra** | viết như thể đang giải thích cho người khác — không phải gạch đầu dòng từ khoá |
 | Nợ kỹ thuật | checkbox những thứ **biết là còn thiếu** |
 
-Mẫu chuẩn: xem `diary/phase1.md` (template trống) và `diary/phase0.md` (bản đã điền thật).
+Mẫu chuẩn: `diary/phase2.md` (template trống) — bản đã điền thật: `diary/phase0.md` (thí
+nghiệm đo I/O) và `diary/phase1.md` (viết code + test).
 
 ## Khuôn một mục nhật ký
 

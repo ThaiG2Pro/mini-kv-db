@@ -157,4 +157,4 @@ nhắc rằng DB không được phó thác durability cho filesystem.
 2. Cập nhật bảng **tỉ số**, ghi rõ lệnh + ngày + commit + máy.
 3. Mỗi món nợ trả xong thì **tick checkbox** ở mục "Nợ kỹ thuật", và ghi một dòng vào bảng
    **giả thuyết sai** nếu số thật khác dự đoán — đó mới là phần đáng giá.
-4. Quy tắc ghi đầy đủ: [`skills/diary-skill.md`](../skills/diary-skill.md).
+4. Quy tắc ghi đầy đủ: [`skills/diary/SKILL.md`](../skills/diary/SKILL.md).

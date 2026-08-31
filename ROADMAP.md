@@ -192,7 +192,7 @@ câu hỏi đầu tiên khi thiết kế DB cho hệ thống lớn.
 ## Nhật ký — quy tắc ghi
 
 Mỗi phase có một file trong `diary/`. Ghi **trong lúc làm**, không phải sau khi xong.
-Quy tắc đầy đủ + checklist chốt phase: [`skills/diary-skill.md`](./skills/diary-skill.md).
+Quy tắc đầy đủ + checklist chốt phase: [`skills/diary/SKILL.md`](./skills/diary/SKILL.md).
 
 Nguyên tắc bất di bất dịch: **mọi con số và mọi kết luận phải kèm lệnh shell sinh ra nó
 và output thật, dán nguyên văn.** Sáu tháng sau mở lại phải chạy lại được, trên máy khác

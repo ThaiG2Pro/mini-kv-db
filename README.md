@@ -5,7 +5,7 @@ recovery, MVCC — chứ không phải để dùng thật.
 
 - Hướng đi chung: [`ROADMAP.md`](./ROADMAP.md)
 - Nhật ký từng phase: [`diary/`](./diary)
-- Quy tắc ghi nhật ký: [`skills/diary-skill.md`](./skills/diary-skill.md)
+- Quy tắc ghi nhật ký: [`skills/diary/SKILL.md`](./skills/diary/SKILL.md)
 - Sổ nợ kỹ thuật: [`docs/debts.md`](./docs/debts.md)
 
 ## Layout
