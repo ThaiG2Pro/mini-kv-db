@@ -1,4 +1,4 @@
-.PHONY: all test vet fmt bench iolab iolab-full baseline torn clean
+.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab check clean
 
 all: fmt vet test
 
@@ -26,6 +26,16 @@ iolab-full:
 # Dùng: make baseline DIR=/mnt/nvme/iolab
 baseline:
 	./scripts/linux-baseline.sh
+
+# Phase 1: soi file pager trên đĩa — meta page luân phiên + freelist tái dùng
+pagerlab:
+	go run ./cmd/pagerlab -db data/test.db -commits 8 -alloc 4 -free 3
+	@echo; echo "meta page A:"; xxd -l 48 data/test.db
+	@echo "meta page B:"; xxd -s 4096 -l 48 data/test.db
+
+# fsck: soi file database, thoát 1 nếu có lỗi nghiêm trọng
+check:
+	go run ./cmd/dbcheck data/test.db
 
 # Torn write (cần root + dm-flakey) — xem docs/linux-baseline.md
 torn:
