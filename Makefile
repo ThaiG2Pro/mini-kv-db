@@ -1,4 +1,4 @@
-.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab check clean
+.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab fuzz check clean
 
 all: fmt vet test
 
@@ -32,6 +32,18 @@ pagerlab:
 	go run ./cmd/pagerlab -db data/test.db -commits 8 -alloc 4 -free 3
 	@echo; echo "meta page A:"; xxd -l 48 data/test.db
 	@echo "meta page B:"; xxd -s 4096 -l 48 data/test.db
+
+# Phase 2: soi một slotted page — chèn, xóa, compact, và churn cho slot phình
+slotlab:
+	go run ./cmd/slotlab -n 24 -size 120
+	@echo; echo "== churn: mảng slot chỉ mọc, không co =="
+	go run ./cmd/slotlab -n 24 -size 120 -delete random -seed 7 -churn 4
+
+# Fuzz slotted page. -fuzzminimizetime BẮT BUỘC: mặc định là 60s, và khi
+# fuzztime hết trong lúc worker đang minimize thì Go vẫn in PASS dù gần như
+# không chạy được gì. Xem diary/phase2.md, bảng giả thuyết sai #4.
+fuzz:
+	go test ./internal/page/ -run '^$$' -fuzz FuzzSlottedPage -fuzztime 120s -fuzzminimizetime 1s
 
 # fsck: soi file database, thoát 1 nếu có lỗi nghiêm trọng
 check:

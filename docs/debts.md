@@ -90,6 +90,64 @@ go test ./internal/pager -bench . -benchtime=200x -run XXX -count=5
 
 **Câu hỏi:** tỉ số 481x (`Commit`/`CommitNoSync`) và 43x (gộp 64 page) có sống sót không?
 
+### ⏳ P2-1 · Không có forwarding pointer
+
+`Update` làm record to ra quá chỗ trống thì trả `ErrPageFull` và bỏ mặc tầng trên.
+
+```bash
+go test ./internal/page -run TestUpdateKeepsSlotID -v
+```
+
+DB thật có hai lối: dời record sang page khác rồi để lại con trỏ (Oracle *row migration*), hoặc
+tạo phiên bản mới ở page khác (Postgres). Chọn lối nào là hệ quả của mô hình MVCC — **để phase 6**,
+đoán bây giờ là đoán non.
+
+### 🔧 P2-2 · Không tái dùng được lỗ hổng nếu chưa compact
+
+SQLite giữ danh sách *freeblock* ngay trong page nên nhét vừa record mới vào một lỗ cũ mà không
+phải dồn cả page. Bản này chỉ có tổng `frag`: muốn dùng lại thì compact hết.
+
+```bash
+go test ./internal/page -bench 'Compact' -benchmem -count=3
+```
+
+**Đo trước khi sửa:** `Compact` chỉ tốn ~2µs, còn `pager.Commit` tốn 1.37ms — **668x**. Rất có thể
+freeblock *không thắng ở workload nào cả*. Trả nợ này = dựng được một workload mà freeblock thắng,
+kèm số; nếu không dựng được thì đóng nợ bằng kết luận "không đáng làm", cũng là trả.
+
+### ⏳ P2-3 · Page không có checksum riêng
+
+Toàn vẹn của slotted page hiện **thừa hưởng** từ atomicity của meta page (phase 1): page chỉ tồn
+tại khi meta trỏ tới nó.
+
+```bash
+go test ./internal/page -run TestPageRoundTripsThroughPager -v
+```
+
+Khi buffer pool (phase 3) ghi page ra đĩa **ngoài** luồng commit, giả định đó vỡ. Xét lại ở đó,
+cùng lúc với chỗ đặt `pageLSN` (đã chừa sẵn 8 byte trong header).
+
+### ⏳ P2-4 · `TrimDeadSlots` chưa được ai gọi tự động
+
+Đang là API thủ công (`cmd/slotlab` gọi để minh hoạ). Gọi lúc nào là chính sách của tầng access
+method — **phase 4**.
+
+```bash
+go run ./cmd/slotlab -n 24 -size 120 -delete random -seed 7 -churn 4
+```
+
+**Số hiện tại:** 4 vòng churn để lại 61/91 slot chết = 244 byte = **6% page** là con trỏ tới hư vô.
+
+### 📏 P2-5 · Chạy lại bench của phase 2 trên Linux thuần
+
+```bash
+go test ./internal/page -bench . -benchmem -count=5 -run XXX
+```
+
+**Câu hỏi:** bảng `-count=3` trên WSL2 cho thấy `VerifyRef` dao động tới 43% giữa các lần chạy.
+Tỉ số 5.5x (`verifyRef`/`Verify`) và 25x (insertion sort/`slices.SortFunc`) có sống sót không?
+Đo cùng lúc với P0-4.
+
 ---
 
 ## Đã trả
@@ -100,6 +158,8 @@ go test ./internal/pager -bench . -benchtime=200x -run XXX -count=5
 | 📏 P0-5 · `fadvise` có thật sự đẩy cache ra? | cờ `-verify-cache` dùng `mincore(2)` | `residency 100.0% -> 0.0%` |
 | 🔧 P1-4 · `WriteAt` trả `n < len(p)` mà `err == nil` | `writeFull()` trong `pager.go` | `TestShortWriteIsAnError` — trước khi sửa: *"Commit báo THÀNH CÔNG dù lời ghi chỉ đi được 4095/4096 byte"* |
 | 🔧 P1-5 · Không có cách kiểm tra file từ bên ngoài | `pager.Verify()` + `cmd/dbcheck` | Bắt được: double free, freelist tự trỏ vào chính nó, meta page bị liệt kê là rỗng, chuỗi có vòng lặp, file cắt giữa page, rò rỉ đuôi file |
+| 🔧 P2-0 · `Compact` dùng insertion sort, giả định offset đã gần sắp xếp | `slices.SortFunc` trên mảng nằm trên stack | `TestCompactOrderIsScrambled` dựng được thế 299/300 nghịch thế; `BenchmarkCompactScrambled` 229810 → 9169 ns/op = **25x**, 0 alloc |
+| 🔧 P2-0b · `Verify` cấp phát 20KB mỗi lần gọi, bóp nghẹt fuzz | bitmap 512 byte trên stack; giữ bản cũ làm `verifyRef` để kiểm tra chéo | `BenchmarkVerifyRefFullPage` 19768 ns / 20576 B vs `BenchmarkVerifyFullPage` 3583 ns / **0 B**; fuzz đi từ 63k lên **1 421 899** exec |
 
 ---
 
