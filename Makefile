@@ -1,4 +1,4 @@
-.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab fuzz check clean
+.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab fuzz fuzz-pool check clean
 
 all: fmt vet test
 
@@ -44,6 +44,13 @@ slotlab:
 # không chạy được gì. Xem diary/phase2.md, bảng giả thuyết sai #4.
 fuzz:
 	go test ./internal/page/ -run '^$$' -fuzz FuzzSlottedPage -fuzztime 120s -fuzzminimizetime 1s
+
+# Phase 3: buffer pool — hit ratio của từng chính sách, và chỗ LRU gãy
+bufferlab:
+	go run ./cmd/bufferlab
+
+fuzz-pool:
+	go test ./internal/bufpool/ -run '^$$' -fuzz FuzzPoolOps -fuzztime 120s -fuzzminimizetime 1s
 
 # fsck: soi file database, thoát 1 nếu có lỗi nghiêm trọng
 check:

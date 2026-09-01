@@ -148,6 +148,64 @@ go test ./internal/page -bench . -benchmem -count=5 -run XXX
 Tỉ số 5.5x (`verifyRef`/`Verify`) và 25x (insertion sort/`slices.SortFunc`) có sống sót không?
 Đo cùng lúc với P0-4.
 
+### 📏 P3-1 · Chưa đo được lợi thế thật của CLOCK (đa luồng)
+
+Cả pool đi qua **một** `p.mu`. Chính sách thay thế nằm bên trong khoá đó nên nó rẻ hay đắt cũng
+không đổi được thông lượng — đo được: 6 luồng cùng pin một page nóng chỉ nhanh hơn 1 luồng
+**2.3x** (62ns → 159ns mỗi thao tác), và CLOCK chỉ hơn LRU 3%.
+
+```bash
+go test ./internal/bufpool -run '^$' -bench PinHitParallel -benchmem -count=5 -cpu 1,2,4,6
+```
+
+**Cách trả:** chia bảng tra thành N mảnh (mỗi mảnh một mutex, chọn mảnh theo `pageID % N`), rồi
+đo lại đúng lệnh trên. **Câu hỏi quyết định:** lúc đó CLOCK có tách khỏi LRU không? Nếu vẫn
+không thì lý thuyết "CLOCK thắng nhờ không phải sửa cấu trúc chung" là sai *ở quy mô này*, và
+đó cũng là một kết luận đáng ghi.
+
+### 🔧 P3-2 · Giữ `p.mu` trong suốt lúc đọc đĩa
+
+`Pin` gọi `store.ReadPage` khi **đang giữ** `p.mu`. Với `MemStore` thì không thấy gì, nhưng với
+đĩa thật thì mọi miss trong toàn hệ thống nối đuôi nhau qua một khoá — 69µs mỗi lần (phase 0).
+
+```bash
+go test ./internal/bufpool -run '^$' -bench PinMiss -benchmem -count=3
+```
+
+**Cách trả:** đánh dấu frame là "đang nạp", nhả `p.mu`, đọc, rồi lấy lại khoá — luồng khác gặp
+frame "đang nạp" thì chờ frame đó chứ không chờ cả pool. **Viết test đỏ trước:** một store cố
+tình chậm (sleep 1ms), 2 goroutine đọc 2 page khác nhau; đo tổng thời gian — hiện tại phải ra
+~2ms, trả nợ xong phải ra ~1ms.
+
+### 🔧 P3-3 · `Victim` của LRU-K là O(số frame)
+
+```bash
+go test ./internal/bufpool -run '^$' -bench 'Victim/lru-2' -benchmem -count=3
+```
+
+**Số hiện tại:** 108ns ở 64 frame → **1339ns** ở 1024 frame (frame ×16 thì chi phí ×12.4).
+Ngoại suy tới pool 400MB (100k frame) thì mỗi lần chọn nạn nhân ~130µs, **đắt hơn cú đọc đĩa
+69µs mà nó định tiết kiệm**. Trả bằng heap theo khoảng cách lùi K, hoặc xấp xỉ kiểu CLOCK-2 bit.
+**Chỉ đáng trả khi pool thật sự lớn** — ghi lại đây để không quên rằng con số 0.817 hit ratio
+của LRU-2 là số đo ở pool 64 frame.
+
+### ⏳ P3-4 · Chưa có prefetch, chưa có ring buffer cho scan
+
+Phase này chỉ chứng minh được LRU-K *chống* được scan. Postgres đi đường khác: cho tầng trên
+**tự khai báo** "tôi đang seq scan" rồi giam nó vào một ring buffer nhỏ. Đường đó cần một access
+method biết nó đang quét — **phase 4**. Cùng lúc đó mới đo được prefetch (đọc trước n page kế
+tiếp), vì trước khi có B+Tree thì không có khái niệm "page kế tiếp".
+
+### 📏 P3-5 · Chạy lại bench của phase 3 trên Linux thuần
+
+```bash
+go test ./internal/bufpool -run '^$' -bench . -benchmem -count=5 -cpu 1,6
+```
+
+**Câu hỏi:** tỉ số 1366x (miss/hit) và 2.3x (6 luồng/1 luồng) có sống sót không? Hit ratio thì
+**không cần** đo lại — nó là hàm của workload và chính sách, không phụ thuộc máy. Đó cũng là
+cách phân biệt số nào cần đo lại: số nào có đơn vị thời gian thì cần, số nào là tỉ lệ thuần thì không.
+
 ---
 
 ## Đã trả
@@ -160,6 +218,7 @@ Tỉ số 5.5x (`verifyRef`/`Verify`) và 25x (insertion sort/`slices.SortFunc`)
 | 🔧 P1-5 · Không có cách kiểm tra file từ bên ngoài | `pager.Verify()` + `cmd/dbcheck` | Bắt được: double free, freelist tự trỏ vào chính nó, meta page bị liệt kê là rỗng, chuỗi có vòng lặp, file cắt giữa page, rò rỉ đuôi file |
 | 🔧 P2-0 · `Compact` dùng insertion sort, giả định offset đã gần sắp xếp | `slices.SortFunc` trên mảng nằm trên stack | `TestCompactOrderIsScrambled` dựng được thế 299/300 nghịch thế; `BenchmarkCompactScrambled` 229810 → 9169 ns/op = **25x**, 0 alloc |
 | 🔧 P2-0b · `Verify` cấp phát 20KB mỗi lần gọi, bóp nghẹt fuzz | bitmap 512 byte trên stack; giữ bản cũ làm `verifyRef` để kiểm tra chéo | `BenchmarkVerifyRefFullPage` 19768 ns / 20576 B vs `BenchmarkVerifyFullPage` 3583 ns / **0 B**; fuzz đi từ 63k lên **1 421 899** exec |
+| 🔧 P3-0 · `victim()` quay vô hạn khi WAL rule chặn mọi ứng viên | đếm số lần bị chặn, hết một vòng frame thì `ErrNoFrame` | `go test -run TestWALRule -timeout 10s` trước khi sửa: `panic: test timed out after 10s`; sau khi sửa: PASS, `store.Writes = 0` |
 
 ---
 
