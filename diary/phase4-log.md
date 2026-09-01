@@ -14,7 +14,7 @@ Chia thế có chủ ý: **không cho phép vừa viết vừa chạy**, để p
 "sửa cho hết đỏ".
 
 Máy: WSL2 / i5-1235U / 6 core / ext4 / go1.26.2. Ngày 2026-09-01.
-Commit gốc: `a97700a`. Commit của phase: _(điền sau khi commit — xem Phần 8)_.
+Commit gốc: `a97700a`. Commit của phase: `f706cbe`.
 
 ---
 
@@ -482,12 +482,19 @@ tuyệt đối" — và là lý do mọi kết luận của phase dựa trên `s
 
 ## Phần 8 — Chốt phase
 
-```bash
-git add -A
-git commit    # phase 4: B+Tree — ...
-git rev-parse --short HEAD
-# -> điền hash vào header của phase4.md và vào dòng "Commit của phase" ở đầu file này
+```console
+$ git add -A && git commit -F - <<'MSG'
+phase 4: B+Tree — split, merge/redistribute, cursor; 4/7 giả thuyết bị bác
+...
+MSG
+$ git rev-parse --short HEAD
+f706cbe
 ```
+
+Hash `f706cbe` được back-fill vào ba chỗ: header của `phase4.md`, dòng "Commit" của mục
+**Số đo** trong `phase4.md`, và dòng "Commit của phase" ở đầu file này. Ba chỗ vì mỗi chỗ
+trả lời một câu hỏi khác nhau: *phase này chốt ở đâu*, *bảng số kia đo trên code nào*, và
+*log này thuộc về commit nào*.
 
 Chép tám món nợ P4-1..P4-8 từ `phase4.md` sang `docs/debts.md`, và cập nhật cột trạng thái
 phase 4 trong `ROADMAP.md` sang ✅.

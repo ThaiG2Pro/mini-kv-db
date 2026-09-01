@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 4-6 ngày · **thực tế:** 1 ngày, 4 lượt (2 code · 1 chạy+sửa · 1 nhật ký)
 - **Bắt đầu:** 2026-09-01 · **Kết thúc:** 2026-09-01
 - **Trạng thái:** ✅ xong
-- **Commit:** `_(điền sau khi commit — xem phase4-log.md phần 8)_`
+- **Commit:** `f706cbe`
 - **Nhật ký lệnh đầy đủ:** [`phase4-log.md`](./phase4-log.md)
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
@@ -462,7 +462,7 @@ Nợ 📏 P4-6 để đo lại trên `pager` thật.
 ## Số đo
 
 **Máy:** WSL2 / i5-1235U / 6 core / ext4 (xem mục Môi trường). **Ngày:** 2026-09-01.
-**Commit:** working tree của phase 4 trên `a97700a`.
+**Commit:** `f706cbe`.
 
 ### Deliverable chính — 1 triệu khóa, tăng dần vs ngẫu nhiên
 
