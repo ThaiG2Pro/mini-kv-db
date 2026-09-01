@@ -63,6 +63,9 @@ Viết ra đây trước, để lát nữa không tự lừa mình rằng "tôi 
 - Cài sẵn WAL rule như một điểm móc, và test chứng minh pool **thà chịu hết frame** chứ không
   ghi vòng qua nó.
 
+> Đường đi đầy đủ — mọi lệnh đã chạy, kể cả các ngõ cụt, và 7 thất bại + 8 cải tiến:
+> [`phase3-log.md`](./phase3-log.md).
+
 ## Reproduce toàn bộ phase này
 
 ```bash
