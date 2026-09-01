@@ -73,8 +73,8 @@ $ cd internal/bufpool && sed -i ...
 Lần gọi trước đã `cd` vào đó rồi. Trạng thái thư mục **sống qua các lần gọi**, còn biến môi
 trường thì không — một sự bất đối xứng rất dễ quên.
 
-**Sửa:** từ đó mọi lệnh đều bắt đầu bằng `...` hoặc dùng
-đường dẫn tuyệt đối. **Bài học:** đây là họ hàng gần của bài học phase 2 (*"khởi động rồi quan
+**Sửa:** từ đó mọi lệnh đều mở đầu bằng `cd /home/thaivro/test-project/db &&`, hoặc dùng đường
+dẫn tuyệt đối. **Bài học:** đây là họ hàng gần của bài học phase 2 (*"khởi động rồi quan
 sát phải nằm trọn trong một lệnh"*) — cùng một gốc: đừng giả định trạng thái giữa hai lần gọi.
 
 ### Cải tiến #1 — viết lại `Victim` của LRU-K thay vì gỡ nó
