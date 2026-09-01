@@ -40,6 +40,9 @@ mọc từ phải, có `Compact()`. Và hiểu vì sao *phải* có tầng gián
 - Hai verifier độc lập (bitmap và sort) phải luôn đồng ý — 30 000 thao tác.
 - `cmd/slotlab`: nhìn bằng mắt vùng trống vỡ vụn rồi liền lại.
 
+> Đường đi đầy đủ — mọi lệnh đã chạy, kể cả các ngõ cụt, và 6 thất bại + 7 cải tiến:
+> [`phase2-log.md`](./phase2-log.md).
+
 ## Reproduce toàn bộ phase này
 
 ```bash
