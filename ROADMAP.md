@@ -36,7 +36,7 @@ xem mục "Sau roadmap" ở cuối.
 | 1 | ✅ Pager: file như mảng page, meta page, checksum, freelist | 1-2 ngày | 40 điểm crash mô phỏng -> mở lại luôn hợp lệ, [diary/phase1.md](diary/phase1.md) |
 | 2 | ✅ Slotted page: record biến độ dài, compact, tuple id | 1 buổi | 1.42 triệu lần fuzz, bất biến không vỡ lần nào, [diary/phase2.md](diary/phase2.md) |
 | 3 | ✅ Buffer pool: pin/unpin, dirty, CLOCK/LRU-K, latch | 1 buổi | Hit-ratio zipfian + sequential flooding, so cả với Belady, [diary/phase3.md](diary/phase3.md) |
-| 4 | **B+Tree**: search/insert/split/delete/merge, cursor | 4-6 ngày | Property test cây cân bằng + bench sequential vs random insert |
+| 4 | ✅ B+Tree: search/insert/split/delete/merge, cursor | 4-6 ngày (thực tế 1) | Property test 7 bất biến + bench 1M khóa: ngẫu nhiên/tăng dần = 33x writes/op, [diary/phase4.md](diary/phase4.md) · [log](diary/phase4-log.md) |
 | 5 | **WAL + recovery**: ARIES-lite (analysis/redo/undo), checkpoint | 3-4 ngày | 200 lần `kill -9` ngẫu nhiên -> durability không sai lần nào |
 | 6 | Transaction & concurrency: 2PL, deadlock, MVCC snapshot isolation | 3-4 ngày | Tái tạo được từng anomaly, và chứng minh mức isolation cao chặn nó |
 | 7 | Secondary index, composite key, iterator, index scan vs seq scan | 2-3 ngày | Bench tìm điểm hòa vốn selectivity |

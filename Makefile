@@ -1,4 +1,4 @@
-.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab fuzz fuzz-pool check clean
+.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree check clean
 
 all: fmt vet test
 
@@ -51,6 +51,21 @@ bufferlab:
 
 fuzz-pool:
 	go test ./internal/bufpool/ -run '^$$' -fuzz FuzzPoolOps -fuzztime 120s -fuzzminimizetime 1s
+
+# Phase 4: B+Tree — hình dạng cây theo thứ tự chèn, fanout, xóa và trả page
+btreelab:
+	go run ./cmd/btreelab -n 200000
+	@echo; echo "== khóa 8 byte, pool nhỏ =="
+	go run ./cmd/btreelab -n 200000 -klen 8 -frames 64
+
+# Deliverable của phase 4: 1 triệu khóa, tăng dần vs ngẫu nhiên, đếm split.
+# -benchtime=1000000x để b.N là ĐÚNG 1 triệu, không phải con số Go tự chọn —
+# nếu không thì splits/1k của hai kịch bản đo trên hai kích cỡ cây khác nhau.
+bench-btree:
+	go test ./internal/btree/ -run '^$$' -bench 'Insert' -benchtime=1000000x -benchmem -timeout 30m
+
+fuzz-btree:
+	go test ./internal/btree/ -run '^$$' -fuzz FuzzTreeOps -fuzztime 120s -fuzzminimizetime 1s
 
 # fsck: soi file database, thoát 1 nếu có lỗi nghiêm trọng
 check:

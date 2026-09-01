@@ -38,6 +38,7 @@ const (
 	offType      = 8  // uint8
 	offFlags     = 9  // uint8  (dự trữ)
 	offReserved  = 10 // uint16 (dự trữ)
+	offLink      = 12 // uint32 con trỏ của access method (xem Page.Link)
 	offPageLSN   = 16 // uint64 móc sẵn cho WAL ở phase 5 (flushedLSN >= pageLSN)
 
 	// HeaderSize 24 byte, chừa chỗ cho pageLSN của phase 5.
@@ -81,6 +82,8 @@ type Page []byte
 
 func (p Page) u16(off int) uint16       { return binary.LittleEndian.Uint16(p[off:]) }
 func (p Page) setU16(off int, v uint16) { binary.LittleEndian.PutUint16(p[off:], v) }
+func (p Page) u32(off int) uint32       { return binary.LittleEndian.Uint32(p[off:]) }
+func (p Page) setU32(off int, v uint32) { binary.LittleEndian.PutUint32(p[off:], v) }
 
 func (p Page) NumSlots() int  { return int(p.u16(offNumSlots)) }
 func (p Page) NumDead() int   { return int(p.u16(offNumDead)) }

@@ -68,6 +68,10 @@ type Pool struct {
 	// Trả lỗi = pool sẽ KHÔNG ghi page đó và KHÔNG evict nó.
 	FlushLog func(pageLSN uint64) error
 
+	// Alloc là móc nối xuống phần cấp phát của pager (xem alloc.go). Nil =
+	// pool không tự sinh page mới được.
+	Alloc Allocator
+
 	// Thống kê. Đọc bằng Stats(), đừng đọc trực tiếp (không có latch).
 	hits, misses   int64
 	evictions      int64

@@ -208,6 +208,96 @@ cách phân biệt số nào cần đo lại: số nào có đơn vị thời gi
 
 ---
 
+### 🔧 P4-1 · Không có overflow page
+
+Giá trị lớn hơn `MaxEntrySize` (2028 byte) bị từ chối thẳng bằng `ErrEntryTooLarge`. DB thật
+tràn phần dư sang một chuỗi overflow page.
+
+```bash
+go test ./internal/btree -run TestPutHugeValue -count=1   # value 100KB phải PASS, không phải báo lỗi
+```
+
+**Câu hỏi quyết định:** ngưỡng nào thì đáng tràn? SQLite giữ lại một phần payload trong leaf
+(`minLocal`/`maxLocal`) để tra cứu không phải đi thêm một page cho giá trị vừa vừa.
+
+### 🔧 P4-2 · Branch node chưa có prefix compression / suffix truncation
+
+Khóa phân tách đang lưu **nguyên vẹn**, trong khi nó chỉ cần đủ dài để phân biệt hai bên.
+
+```bash
+make btreelab   # so cột `branch/page` của mục 3 trước và sau
+```
+
+**Số hiện tại để so:** khóa 16 byte → `branch/page = 77` (trần lý thuyết 156, branch chỉ đầy
+~50%). **Câu hỏi:** với khóa có tiền tố chung dài (đường dẫn, tên miền ngược) thì đẩy được
+fanout lên bao nhiêu, và chiều cao cây có tụt một tầng không?
+
+### 📏 P4-3 · Cursor re-pin mỗi `Next()`, chưa tách được giá của nó
+
+```bash
+go test ./internal/btree -run '^$' -bench 'Scan' -benchtime=20x
+```
+
+**Số hiện tại:** `91.23 ns/key`. **Câu hỏi:** bao nhiêu phần trong đó là pin/unpin? Trả bằng
+một biến thể cursor giữ pin suốt một leaf rồi so ns/key. Có thể kết luận "không đáng làm" —
+đó cũng là một cách trả.
+
+### ⏳ P4-4 · Root đổi `PageID` mỗi lần cây cao thêm
+
+Tầng trên phải tự nhớ root mới. Cách thường dùng là cố định root ở một page id không đổi và
+copy nội dung khi cây cao thêm.
+
+**Để phase 5 (WAL) quyết**, vì nó dính tới chỗ ghi root vào meta page và tới việc root có
+phải là thứ được log hay không.
+
+### ⏳ P4-5 · Chưa có latch-coupling: cây không an toàn khi nhiều goroutine cùng ghi
+
+`go test -race` xanh chỉ vì mọi test hiện tại đều đơn luồng — đó **không** phải bằng chứng an
+toàn. Đây là phase 7.
+
+### 📏 P4-6 · `ns/op` của `BenchmarkGetPool*` không phải số đo I/O
+
+`MemDB` chỉ memcpy 4KB nên `ns/op` đang đo footprint cache CPU, không đo đĩa. Bằng chứng:
+pool 512 frame (2MB, lọt L2) = 1658 ns/op, pool 2048 frame (8MB, vượt L2) = **2768 ns/op** —
+pool to hơn mà chậm hơn, trong khi `reads/op` giảm đều.
+
+```bash
+lscpu | grep -i cache        # L2 3.8MiB, L3 12MiB trên máy này
+# trả bằng: chạy lại benchGet trên pager THẬT, dùng -verify-cache của phase 0 ép cache lạnh
+```
+
+**Câu hỏi:** `reads/op × thời gian một pread` có khớp `ns/op` thực đo không? Lệch thì phần
+lệch là chi phí của chính buffer pool.
+
+### 📏 P4-7 · Chưa đo xóa theo CỤM
+
+G5 của phase 4 sai (dự đoán file co chậm hơn dữ liệu > 2x; đo được **89% page được trả lại**,
+tỉ số 1.07x) — nhưng lab chỉ xóa **ngẫu nhiên đều tay**, kịch bản làm mọi leaf cạn cùng nhịp
+nên merge nổ liên tục. Xóa hết một **dải khóa liên tiếp** là kịch bản mà giả thuyết cũ có thể
+đúng.
+
+```bash
+# trả bằng: thêm -delmode range vào cmd/btreelab mục 4, rồi
+make btreelab
+```
+
+**Câu hỏi:** xóa 90% khóa theo cụm thì trả lại bao nhiêu % page? Nếu thấp hơn hẳn 89% thì
+"file không co" là vấn đề của **phân bố xóa**, không phải của thuật toán merge.
+
+### 🔧 P4-8 · `fixUnderfull` chỉ xét MỘT anh em
+
+Anh em bên đó không gộp được thì bỏ cuộc, dù bên kia có thể gộp được.
+
+```bash
+go test ./internal/btree -run TestPropertyRandomOps -v -count=1   # đọc dòng MergeMissed
+```
+
+**Số hiện tại:** `MergeMissed = 0` ở cả hai hồ sơ ⇒ **có thể món nợ này không đáng trả**.
+Nhưng phải đo lại ở workload xóa theo cụm của P4-7 trước khi kết luận — đúng theo quy tắc 2:
+nợ 📏 không được đoán.
+
+---
+
 ## Đã trả
 
 | Món | Trả bằng | Bằng chứng |
