@@ -3,7 +3,7 @@
 - **Thời lượng thực tế:** 1 buổi
 - **Bắt đầu:** 2026-09-01 · **Kết thúc:** 2026-09-01
 - **Trạng thái:** ✅ xong
-- **Commit:** _(điền khi chốt)_
+- **Commit:** `5087157` — mọi số đo trong file này thuộc về cây làm việc của commit đó
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Ghi trong lúc làm, không phải sau khi xong.
