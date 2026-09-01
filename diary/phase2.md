@@ -3,7 +3,7 @@
 - **Thời lượng thực tế:** 1 buổi
 - **Bắt đầu:** 2026-09-01 · **Kết thúc:** 2026-09-01
 - **Trạng thái:** ✅ xong
-- **Commit:** `cf06483` — mọi số đo trong file này thuộc về cây làm việc của commit đó
+- **Commit:** `5c71e02` — mọi số đo trong file này thuộc về cây làm việc của commit đó
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Sáu tháng sau đọc lại phải chạy lại được.
@@ -236,7 +236,7 @@ test thường* → *thí nghiệm đối chứng* → *nhìn thẳng vào tiế
 
 ## Số đo
 
-Máy: WSL2 / i5-1235U / ext4 trên /dev/sdd. Ngày 2026-09-01. Commit `cf06483`.
+Máy: WSL2 / i5-1235U / ext4 trên /dev/sdd. Ngày 2026-09-01. Commit `5c71e02`.
 
 ```console
 $ go test ./internal/page/ -run '^$' -bench . -benchmem -benchtime 2000x -count=1
