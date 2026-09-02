@@ -23,6 +23,7 @@ func (t *Tree) Delete(key []byte) error {
 	if len(key) == 0 {
 		return ErrEmptyKey
 	}
+	t.gen++
 	path, err := t.descend(key)
 	if err != nil {
 		return err

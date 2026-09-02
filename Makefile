@@ -1,4 +1,4 @@
-.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree crashlab crashlab-full crashlab-nosync crashlab-nowrite wallab bench-wal fuzz-db fuzz-txn txnlab txnlab-anomaly txnlab-contention bench-txn test-txn check clean
+.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree crashlab crashlab-full crashlab-nosync crashlab-nowrite wallab bench-wal fuzz-db fuzz-txn fuzz-keys fuzz-table idxlab idxlab-breakeven idxlab-bytes bench-index test-index txnlab txnlab-anomaly txnlab-contention bench-txn test-txn check clean
 
 all: fmt vet test
 
@@ -155,6 +155,59 @@ test-txn:
 fuzz-txn:
 	go test ./internal/txn/ -run '^$$' -fuzz FuzzChainCodec -fuzztime 120s -fuzzminimizetime 1s
 	go test ./internal/txn/ -run '^$$' -fuzz FuzzTxnCrash -fuzztime 120s -fuzzminimizetime 1s
+
+# ---------- Phase 7: secondary index + query ----------
+
+# Deliverable của phase 7, năm bảng. Bảng số 1 là bài chính: cùng một truy vấn,
+# ba đường đi (seq scan / index scan / index-only scan), chín độ chọn lọc — và
+# ĐIỂM HOÀ VỐN. Bảng còn in hai cột planner: một dùng mô hình chi phí ĐO ĐƯỢC,
+# một dùng mô hình ĐOÁN sẵn trong code, để thấy một hằng số lệch làm planner
+# chọn sai ở đúng dải nào (= random_page_cost của Postgres).
+idxlab:
+	go run ./cmd/idxlab -rows 20000 -repeat 20
+
+# Chỉ bảng điểm hoà vốn, bảng to hơn cho số ổn định hơn.
+idxlab-breakeven:
+	go run ./cmd/idxlab -work breakeven -rows 50000 -repeat 30
+
+# Không cần database: in hình dạng byte của khóa composite. Đây là bảng trả lời
+# "vì sao index chỉ dùng được cho tiền tố bên trái" bằng byte thật, không bằng
+# lời — và nó chạy trong một phần nghìn giây.
+idxlab-bytes:
+	go run ./cmd/idxlab -work bytes
+
+# Ba hằng số của mô hình chi phí (một bước quét / một bước index / một lần tra
+# bảng), cái giá của index ở đường ghi, và cái mà nợ P6-4 mua được (LIMIT 1).
+# -benchtime lớn cho PointLookup vì nó ~1µs: ở số vòng nhỏ thì đo ra chi phí
+# nạp page, không phải chi phí của đường đọc (bài học phase 5 và 6).
+bench-index:
+	go test ./internal/query/ -run '^$$' -bench 'PointLookup|ScanLimit' -benchtime=20000x -count=3
+	go test ./internal/query/ -run '^$$' -bench 'SeqStep' -benchtime=30x -count=3
+	go test ./internal/query/ -run '^$$' -bench 'PlanSelectivity' -benchtime=20x
+	go test ./internal/query/ -run '^$$' -bench 'IndexMaintenance' -benchtime=6000x
+	go test ./internal/keys/ -run '^$$' -bench . -benchmem
+
+# Bài test đối chứng của phase 7: ba kế hoạch phải cho CÙNG kết quả (một
+# planner đổi kết quả là một database sai), và bất biến hàng<->index phải đúng
+# sau chèn/sửa/xóa/crash.
+test-index:
+	go test ./internal/keys/ ./internal/table/ ./internal/query/ -count=1 -race -v \
+		-run 'Order|RoundTrip|Canonical|Index|Plan|Choose|Estimate|Unique|Catalog'
+
+# Fuzz phase 7, hai target:
+#   FuzzKeyOrder  — bất biến ĐỊNH NGHĨA của bộ mã hoá khóa: thứ tự byte phải
+#     bằng thứ tự logic, ở mọi kiểu, mọi chiều sắp, mọi ca tiền tố và byte
+#     0x00. Đây là chỗ một bài test viết tay không bao giờ đủ.
+#   FuzzKeyCodec  — canonical: giải mã được thì mã hoá lại phải ra byte cũ.
+fuzz-keys:
+	go test ./internal/keys/ -run '^$$' -fuzz FuzzKeyOrder -fuzztime 120s -fuzzminimizetime 1s
+	go test ./internal/keys/ -run '^$$' -fuzz FuzzKeyCodec -fuzztime 120s -fuzzminimizetime 1s
+
+# FuzzTableIndex — hàng và mục index đi qua chuỗi version (phase 6) rồi qua
+# WAL/redo/undo (phase 5) mà không tầng nào biết bên trên có "index". Sau crash
+# không được có mục nào trỏ tới hàng không còn, và số mục phải bằng số hàng.
+fuzz-table:
+	go test ./internal/table/ -run '^$$' -fuzz FuzzTableIndex -fuzztime 120s -fuzzminimizetime 1s
 
 # fsck: soi file database, thoát 1 nếu có lỗi nghiêm trọng
 check:

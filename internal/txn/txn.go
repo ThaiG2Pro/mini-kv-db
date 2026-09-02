@@ -206,9 +206,21 @@ func (t *Txn) GetForUpdate(key []byte) (val []byte, ok bool, err error) {
 // được, nên phải lock chỗ nó SẼ nằm. Đây là predicate lock ở dạng nghèo nhất
 // còn dùng được.
 //
-// Cài đặt vật chất hoá kết quả (đọc hết vào slice rồi trộn với write set) thay
-// vì stream. Cái giá là bộ nhớ O(số khóa trong khoảng) — đúng nghĩa một món nợ,
-// chứ không phải một thiết kế; ghi vào docs/debts.md.
+// Phase 7 đổi cài đặt: STREAM bằng một phép trộn (merge join) giữa hai dòng đã
+// sắp — cây và write set — thay vì gom hết vào RAM rồi sort. Đây là chỗ trả nợ
+// P6-4, và ba thứ đổi theo:
+//
+//   - bộ nhớ: O(số khóa BẨN của chính transaction) thay vì O(số khóa trong
+//     khoảng). Với một scan cả bảng và một write set rỗng thì từ O(n) về O(1).
+//   - fn được gọi trong lúc đang duyệt, nên nó được phép GỌI LẠI vào Get/Scan.
+//     Không có tính chất này thì không có index scan (xem internal/query).
+//   - fn thấy khóa đầu tiên sau ~một lần xuống cây, không phải sau khi đã đọc
+//     hết khoảng. Đó là khác biệt giữa "trả về một mảng" và "trả về một
+//     cursor", và là lý do LIMIT trong SQL có nghĩa.
+//
+// Write set VẪN phải được chép ra và sắp trước khi trộn: fn có quyền Put trong
+// lúc scan, và duyệt trực tiếp trên t.ws thì vừa sai ngữ nghĩa (ngữ nghĩa đúng
+// là một câu lệnh nhìn thấy trạng thái lúc nó BẮT ĐẦU) vừa panic ngay.
 func (t *Txn) Scan(lo, hi []byte, fn func(key, val []byte) bool) error {
 	if t.done {
 		return ErrTxnDone
@@ -225,78 +237,102 @@ func (t *Txn) Scan(lo, hi []byte, fn func(key, val []byte) bool) error {
 		}
 	}
 	snap := t.readSnap()
+	own := t.ownSorted(lo, hi)
 
-	type kv struct{ k, v []byte }
-	var rows []kv
-	seen := map[string]bool{}
+	it := t.s.d.Iter(lo, hi)
 
-	// Lỗi giải mã phải mang ra NGOÀI callback: btree.Range trả về lỗi của
-	// cursor, không trả về lỗi của người duyệt. Nuốt nó ở đây là biến một
-	// chuỗi version hỏng thành một scan lặng lẽ thiếu khóa.
-	var decErr error
-	err := t.s.d.Range(lo, hi, func(k, raw []byte) bool {
-		if reserved(k) {
-			return true
+	// tk/tv giữ bản NHÌN THẤY ĐƯỢC kế tiếp từ cây; tvalid = còn không.
+	var tk, tv []byte
+	tvalid := false
+	// advance đi tới entry nhìn thấy được kế tiếp. Lỗi giải mã phải mang ra
+	// NGOÀI vòng lặp: nuốt nó là biến một chuỗi version hỏng thành một scan
+	// lặng lẽ thiếu khóa.
+	advance := func() error {
+		for it.Next() {
+			k := it.Key()
+			if reserved(k) {
+				continue
+			}
+			c, err := DecodeChain(it.Value())
+			if err != nil {
+				return fmt.Errorf("txn: khóa %q: %w", k, err)
+			}
+			v, has := c.Visible(snap)
+			if !has || v.Deleted {
+				continue
+			}
+			tk = append(tk[:0], k...)
+			tv = append(tv[:0], v.Val...)
+			tvalid = true
+			return nil
 		}
-		c, derr := DecodeChain(raw)
-		if derr != nil {
-			decErr = fmt.Errorf("txn: khóa %q: %w", k, derr)
-			return false
-		}
-		v, has := c.Visible(snap)
-		if !has || v.Deleted {
-			return true
-		}
-		rows = append(rows, kv{append([]byte(nil), k...), append([]byte(nil), v.Val...)})
-		seen[string(k)] = true
-		return true
-	})
-	if err != nil {
+		tvalid = false
+		return it.Err()
+	}
+	if err := advance(); err != nil {
 		return err
 	}
-	if decErr != nil {
-		return decErr
-	}
 
-	// Trộn write set của chính mình vào: một khóa ta vừa ghi phải xuất hiện
-	// trong scan của ta, và một khóa ta vừa xoá phải biến mất khỏi scan của ta.
+	for {
+		switch {
+		case !tvalid && len(own) == 0:
+			return nil
+
+		case len(own) == 0 || (tvalid && bytes.Compare(tk, own[0].k) < 0):
+			// Chỉ có trong cây. fn gọi TRƯỚC advance: advance ghi lại chính
+			// hai buffer tk/tv mà fn đang cầm.
+			if !fn(tk, tv) {
+				return nil
+			}
+			if err := advance(); err != nil {
+				return err
+			}
+
+		case !tvalid || bytes.Compare(own[0].k, tk) < 0:
+			// Chỉ có trong write set: một khóa ta vừa tạo ra.
+			w := own[0]
+			own = own[1:]
+			if !w.v.Deleted && !fn(w.k, w.v.Val) {
+				return nil
+			}
+
+		default:
+			// Cùng khóa: write set thắng — read-your-own-writes. Nếu ta vừa
+			// xóa nó thì nó phải BIẾN MẤT khỏi scan của ta, nên nhánh này
+			// cũng là chỗ cài phép xóa.
+			w := own[0]
+			own = own[1:]
+			if err := advance(); err != nil {
+				return err
+			}
+			if !w.v.Deleted && !fn(w.k, w.v.Val) {
+				return nil
+			}
+		}
+	}
+}
+
+// ownKV là một mục của write set đã chép ra và sắp theo khóa.
+type ownKV struct {
+	k []byte
+	v Version
+}
+
+// ownSorted chép những khóa của write set nằm trong [lo, hi) ra và sắp lại.
+// O(w log w) với w = số khóa bẩn, không phụ thuộc độ dài khoảng.
+func (t *Txn) ownSorted(lo, hi []byte) []ownKV {
 	t.mu.Lock()
+	out := make([]ownKV, 0, len(t.ws))
 	for ks, v := range t.ws {
 		k := []byte(ks)
 		if bytes.Compare(k, lo) < 0 || (hi != nil && bytes.Compare(k, hi) >= 0) {
 			continue
 		}
-		if v.Deleted {
-			if seen[ks] {
-				for i := range rows {
-					if string(rows[i].k) == ks {
-						rows = append(rows[:i], rows[i+1:]...)
-						break
-					}
-				}
-			}
-			continue
-		}
-		if seen[ks] {
-			for i := range rows {
-				if string(rows[i].k) == ks {
-					rows[i].v = append([]byte(nil), v.Val...)
-					break
-				}
-			}
-			continue
-		}
-		rows = append(rows, kv{k, append([]byte(nil), v.Val...)})
+		out = append(out, ownKV{k: k, v: v})
 	}
 	t.mu.Unlock()
-
-	sort.Slice(rows, func(i, j int) bool { return bytes.Compare(rows[i].k, rows[j].k) < 0 })
-	for _, r := range rows {
-		if !fn(r.k, r.v) {
-			break
-		}
-	}
-	return nil
+	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i].k, out[j].k) < 0 })
+	return out
 }
 
 // Count đếm khóa trong khoảng — dạng gọn của Scan, dùng cho test phantom.

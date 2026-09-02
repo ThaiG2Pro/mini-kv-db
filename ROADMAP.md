@@ -39,7 +39,7 @@ xem mục "Sau roadmap" ở cuối.
 | 4 | ✅ B+Tree: search/insert/split/delete/merge, cursor | 4-6 ngày (thực tế 1) | Property test 7 bất biến + bench 1M khóa: ngẫu nhiên/tăng dần = 33x writes/op, [diary/phase4.md](diary/phase4.md) · [log](diary/phase4-log.md) |
 | 5 | ✅ **WAL + recovery**: ARIES-lite (analysis/redo/undo), checkpoint | 3-4 ngày (thực tế 2) | 200/200 lần `kill -9` ngẫu nhiên, 9194 txn đã commit được kiểm — **và** 10/10 báo SAI khi cố tình làm mất log ([diary/phase5.md](diary/phase5.md) · [log](diary/phase5-log.md)) |
 | 6 | ✅ **Transaction & concurrency**: MVCC snapshot isolation + S2PL, 4 mức isolation, deadlock detection | 3-4 ngày (thực tế 1) | Bảng 5 anomaly × 4 mức khớp lý thuyết từng ô, khẳng định theo **cả hai chiều**; chuyển tiền vỡ ở mức thấp, giữ ở mức cao; và **chỗ MVCC thua lock** ([diary/phase6.md](diary/phase6.md) · [log](diary/phase6-log.md)) |
-| 7 | Secondary index, composite key, iterator, index scan vs seq scan | 2-3 ngày | Bench tìm điểm hòa vốn selectivity |
+| 7 | ✅ **Secondary index + query**: bộ mã hoá khóa giữ thứ tự, catalog nhiều bảng trong một cây, 3 kế hoạch + mô hình chi phí đo được | 2-3 ngày (thực tế 2 buổi) | Điểm hoà vốn selectivity **đo được 36.8%** (không phải 5-20% như sách — vì ở quy mô này không có I/O thật), và bảng còn có cột **planner chọn sai** ([diary/phase7.md](diary/phase7.md) · [log](diary/phase7-log.md)) |
 | 8 | (tùy chọn) SQL front-end: parser -> planner -> executor, join | 2-3 ngày | Chạy được `SELECT ... JOIN ... WHERE` |
 
 Tổng ~4-6 tuần với 2-3h/ngày.
@@ -220,6 +220,67 @@ mọi txn đã báo commit đều còn, mọi txn chưa commit biến mất hoà
   rồi bench để tìm điểm hòa vốn (thường ~5-20% số hàng thì seq scan lại nhanh hơn).
 
 Đây chính là kỹ năng "tối ưu DB cho công ty lớn".
+
+### Đã làm — và năm chỗ khác với dự kiến
+
+- **Đạt:** `make idxlab-breakeven` — cùng một truy vấn, **ba** đường đi (seq / index / index-only),
+  chín độ chọn lọc, điểm hoà vốn **nội suy từ chính số đo**. `make test-index`: ba kế hoạch phải
+  cho **cùng** một multiset hàng (một planner đổi kết quả là một database **sai**, không phải chậm).
+  `make fuzz-keys`: 10.5M + 11.1M exec sạch. 22 test phase 7 xanh dưới `-race`.
+
+- **Khác dự kiến #1 — nợ P6-4 là CỬA VÀO của cả phase, không phải một món tối ưu.** Index scan là
+  *"với mỗi mục index, đi tra bảng theo pk"*, tức một phép truy cây nằm **trong callback** của một
+  phép duyệt cây. Với `db.Range` cũ (giữ `d.mu` suốt lần duyệt) việc đó **tự khoá chết**. Nên
+  phase 7 **không tồn tại được** trước khi P6-4 được trả. Một món nợ ghi là "🔧 tối ưu" hoá ra là
+  "chặn cả phase sau".
+
+- **Khác dự kiến #2 — không cần latch-coupling, và câu "cần P4-5 trước" trong sổ nợ là SAI.** Cái
+  quyết định một reader **thấy gì** là **ảnh chụp MVCC (phase 6)**, không phải latch (phase 4).
+  Latch chỉ còn phải bảo vệ **vị trí** cursor, và một vị trí không cần được bảo vệ — nó cần một
+  cách **biết mình đã hết đúng**. Đó là `btree.Tree.gen` + tìm lại chỗ **theo khóa** (*cursor
+  restoration* của InnoDB/SQLite). **Cái latch phase 4 phải giữ được tháo bằng một cơ chế của
+  phase 6.** Bài học về cách ghi nợ: ghi hiện tượng + cách kiểm chứng, đừng ghi **cách trả**.
+
+- **Khác dự kiến #3 — leaf lưu PRIMARY KEY, không lưu `(PageID, SlotID)`.** Kế hoạch viết
+  `index key -> (PageID, SlotID)`. Nhưng hàng ở đây **nằm trong** index của primary key (kiểu
+  InnoDB/SQLite), nên nó **di chuyển** mỗi lần leaf split ⇒ một con trỏ vật lý sẽ hỏng, và sửa nó
+  thì phải đi sửa **mọi** secondary index. Primary key là một **giá trị logic**: nó không di
+  chuyển. Hệ quả kèm theo: truy vấn theo pk **không bao giờ** cần secondary index, và seq scan trả
+  về **theo thứ tự pk**.
+
+- **Khác dự kiến #4 — điểm hoà vốn 36.8%, không phải 5-20%, và VÌ SAO quan trọng hơn con số.**
+  ROADMAP viết "thường ~5-20%", và hằng số đoán sẵn trong code (`CFetch/CSeq = 20`) cho đúng 4.85%.
+  Đo được: `CFetch/CSeq = 4.5x`, hoà vốn **36.8%** — sai 7.5 lần. Lý do: ở quy mô này **không có
+  I/O thật nào cả**, cả cây nằm trong buffer pool. Con số 20 ấy **chính là `random_page_cost` của
+  Postgres**. **Cố ý không sửa hằng số**, và thêm cột `planner(đoán)` để bảng tự trưng ra ba dòng
+  (5%, 10%, 25%) nơi nó chọn kế hoạch chậm hơn **7.7x / 3.9x / 1.4x**.
+
+- **Khác dự kiến #5 — một hằng số chi phí không phải thuộc tính của phép toán.** Nó là thuộc tính
+  của phép toán **cộng với thứ tự truy cập**: `CFetch` đo bằng khóa nhảy lung tung đắt hơn đo bằng
+  khóa tăng dần **1.6-2.2x**, và **cả hai đều đúng** — cho hai loại index khác nhau. Đó là vì sao
+  Postgres lưu `correlation` **riêng cho từng cột**, và vì sao nó không suy ra được từ
+  `seq_page_cost`/`random_page_cost`. Phát hiện này đến từ việc bảng deliverable **phản bác dòng
+  kết luận của chính nó**.
+
+- **Thêm vào, không có trong kế hoạch:** `make idxlab-bytes` — in **hình dạng byte** của khóa
+  composite, không cần database, chạy trong một phần nghìn giây. Nó trả lời *"vì sao index chỉ
+  dùng được cho tiền tố bên trái"* bằng **byte thật**: `city='HN'` là khoảng liên tục
+  `[06484e0000, 06484e0001)`, còn `age=30` **không là khoảng nào cả**. Nên "leftmost prefix rule"
+  không phải một quy ước của MySQL — nó là hệ quả của việc phép so duy nhất mà B+Tree biết là
+  `memcmp`.
+
+- **Bốn con bug của lượt chạy, và KHÔNG con nào trong database.** Cả bốn nằm trong **bộ đo**:
+  bảng deliverable phản bác kết luận của chính nó; `BenchmarkIndexMaintenance` đo **fsync** suốt
+  (1 txn/vòng ⇒ 99.7% con số là durability); lời đọc bảng suy nhân quả ngược (giá UPDATE do **số
+  index chứa cột bị đổi** quyết định, ×2 — đúng tối ưu **HOT** của Postgres); và bộ test **xanh
+  với một cursor hỏng** (tắt cơ chế `gen` thì `txn`/`table`/`query` xanh cả ba, vì mọi lần quét
+  trong chúng chạy **một mình**). Ba trong bốn cái chỉ lộ ra vì có **hai phép đo độc lập** cùng
+  nói về một việc.
+
+- **Trả nợ phase trước:** **P6-4** (đầy đủ) và **nửa đọc của P4-5**. Nợ mới: **P7-1 → P7-9**.
+  **Không** trả và cố ý: nửa **ghi** của P4-5 (nhiều writer vật lý buộc bỏ pha undo physical của
+  phase 5), và histogram — vì `TestEstimateIsWrongOnSkew` đang khẳng định **đúng cái giới hạn ấy**
+  và sẽ đỏ khi ai đó trả P7-6.
 
 ## Phase 8 — (tùy chọn) SQL front-end (2-3 ngày)
 

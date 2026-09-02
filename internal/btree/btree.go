@@ -37,6 +37,21 @@ type Tree struct {
 	root pager.PageID
 	st   Stats
 
+	// gen là SỐ ĐỜI CẤU TRÚC: tăng một lần cho mỗi thao tác có thể làm dịch
+	// chuyển một entry khỏi chỗ nó đang nằm. Cursor chụp lấy nó để biết vị
+	// trí (page, slot) mà mình đang giữ còn nghĩa hay không.
+	//
+	// Vì sao tăng ở MỌI Put/Delete chứ không chỉ ở split/merge: Put ghi đè
+	// một khóa cũng có thể compact cả page (phase 2), và compact dồn lại mọi
+	// offset — slot index không đổi nhưng khóa ở slot ấy thì đổi khi có ai
+	// khác bị xóa. Đếm hẹp hơn là đúng ở nhiều ca và sai lặng lẽ ở vài ca,
+	// tức là đúng cái loại bug mà phase 5 gọi là "hai nguồn sự thật".
+	//
+	// KHÔNG dùng atomic: mọi lối vào cây đều đã ở dưới d.mu của internal/db
+	// (một writer, do code bắt buộc — P1-2). Ngày nào bỏ được ràng buộc ấy
+	// thì đây là dòng đầu tiên phải đổi, nên nó được ghi ra thành chữ.
+	gen uint64
+
 	// RightmostSplit bật tối ưu chèn cực phải: khi khóa mới lớn hơn mọi khóa
 	// đang có, tách 100/0 thay vì 50/50. Khóa auto-increment nhờ nó mà lấp
 	// đầy page thay vì để lại một dãy page nửa rỗng. Tắt được để bench đo
@@ -90,8 +105,11 @@ func Open(pool *bufpool.Pool, root pager.PageID) *Tree {
 }
 
 func (t *Tree) Root() pager.PageID { return t.root }
-func (t *Tree) Stats() Stats       { return t.st }
-func (t *Tree) ResetStats()        { t.st = Stats{} }
+
+// Gen là số đời cấu trúc hiện tại — xem trường gen.
+func (t *Tree) Gen() uint64  { return t.gen }
+func (t *Tree) Stats() Stats { return t.st }
+func (t *Tree) ResetStats()  { t.st = Stats{} }
 
 // ---------- pin/unpin ----------
 
@@ -226,6 +244,7 @@ func (t *Tree) Put(key, val []byte) error {
 	if n := 2 + len(key) + len(val); n > MaxEntrySize {
 		return fmt.Errorf("%w: %d > %d", ErrEntryTooLarge, n, MaxEntrySize)
 	}
+	t.gen++
 	path, err := t.descend(key)
 	if err != nil {
 		return err

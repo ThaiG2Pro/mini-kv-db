@@ -92,6 +92,7 @@ func (t *Tree) freePage(id pager.PageID) error {
 }
 
 func (t *Tree) setRoot(id pager.PageID) {
+	t.gen++
 	if t.J != nil && t.root != id {
 		t.J.RootChanged(t.root, id)
 	}
@@ -108,4 +109,4 @@ func (t *Tree) setRoot(id pager.PageID) {
 // Quên đồng bộ hai chỗ thì sau một lần Abort, cây vẫn đọc từ root mà
 // transaction vừa bị hủy đã tạo ra — page đó đã bị thu hồi, nên nội dung nó
 // trả về là bất kỳ thứ gì được cấp vào chỗ ấy sau đó.
-func (t *Tree) SetRoot(id pager.PageID) { t.root = id }
+func (t *Tree) SetRoot(id pager.PageID) { t.gen++; t.root = id }

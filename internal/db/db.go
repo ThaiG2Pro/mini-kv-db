@@ -13,6 +13,7 @@
 package db
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -364,16 +365,117 @@ func (d *DB) Has(key []byte) (bool, error) {
 	return d.tree.Has(key)
 }
 
+// Iter là một lần duyệt khoảng khóa [lo, hi) mà latch chỉ bị giữ TRONG MỘT
+// BƯỚC, không phải suốt lần duyệt.
+//
+// Đây là chỗ trả nợ P6-4, và nó phải trả trước phase 7 chứ không phải để cho
+// đẹp: một index scan là "duyệt index rồi với mỗi entry đi tra bảng theo
+// primary key" — tức là một lần đọc cây TỪ TRONG callback của một lần duyệt
+// cây. Với bản cũ (giữ d.mu suốt lần duyệt) việc đó tự khoá chết chính nó.
+// Nghĩa là nợ P4-5/P6-4 không phải món xa xỉ; nó là cửa vào của cả phase.
+//
+// Vì sao nhả latch giữa hai bước lại AN TOÀN, trong khi chú thích cũ ở đây
+// nói ngược lại:
+//
+//  1. cursor mang số đời cấu trúc của cây (btree.Tree.gen). Writer chen vào
+//     giữa hai bước thì số đời lệch, và cursor đi lại từ root tới khóa kế
+//     tiếp SAU khóa vừa trả — vị trí theo khóa, không theo (page, slot).
+//  2. thứ quyết định người đọc THẤY GÌ không còn là latch mà là snapshot MVCC
+//     của phase 6. Một lần duyệt thấy cả cái vừa được commit giữa đường vẫn
+//     ra kết quả đúng, vì chuỗi version giữ cả bản cũ và luật visibility
+//     chọn bản đúng cho snapshot ấy.
+//
+// Điểm (2) là điều đáng nhớ nhất: cái latch mà phase 4 phải giữ thật lâu được
+// tháo ra nhờ một cơ chế của phase 6, không nhờ một cơ chế của phase 4.
+type Iter struct {
+	d      *DB
+	lo, hi []byte
+	c      *btree.Cursor
+	key    []byte
+	val    []byte
+	ok     bool
+	err    error
+}
+
+// Iter mở một lần duyệt. Chưa đứng trên entry nào: Next() đầu tiên đặt vị trí.
+func (d *DB) Iter(lo, hi []byte) *Iter {
+	return &Iter{d: d, lo: lo, hi: hi}
+}
+
+// Next bước một bước. Toàn bộ thân hàm nằm dưới d.mu; lúc nó trả về thì không
+// còn latch nào bị giữ, nên người gọi được phép đọc cây tiếp, ghi cây, hoặc
+// bỏ cursor đó luôn.
+func (it *Iter) Next() bool {
+	it.d.mu.Lock()
+	defer it.d.mu.Unlock()
+	if it.err != nil {
+		it.ok = false
+		return false
+	}
+	if it.c == nil {
+		it.c = it.d.tree.Seek(it.lo)
+	} else if it.ok {
+		it.c.Next()
+	} else {
+		return false
+	}
+	if err := it.c.Err(); err != nil {
+		it.err, it.ok = err, false
+		return false
+	}
+	if !it.c.Valid() {
+		it.ok = false
+		return false
+	}
+	if it.hi != nil && bytes.Compare(it.c.Key(), it.hi) >= 0 {
+		it.ok = false
+		return false
+	}
+	// Chép ra: hết latch là byte của cursor có thể bị bước kế ghi lại.
+	it.key = append(it.key[:0], it.c.Key()...)
+	it.val = append(it.val[:0], it.c.Value()...)
+	it.ok = true
+	return true
+}
+
+func (it *Iter) Key() []byte   { return it.key }
+func (it *Iter) Value() []byte { return it.val }
+func (it *Iter) Err() error    { return it.err }
+
+// Restores là số lần cursor phải đi lại từ root vì có writer chen vào. Bằng 0
+// trong một bài test có writer song song = cơ chế chưa từng được thử.
+func (it *Iter) Restores() int {
+	if it.c == nil {
+		return 0
+	}
+	return it.c.Restores()
+}
+
 // Range gọi fn cho mọi khóa trong [lo, hi) theo thứ tự tăng dần. hi == nil
 // nghĩa là tới hết.
 //
-// Toàn bộ lần duyệt nằm trong MỘT lần giữ d.mu. Đó là một quyết định, không
-// phải sơ suất: cursor của phase 4 thả pin giữa hai bước Next(), nên nếu một
-// writer chen vào giữa và split đúng cái leaf ta đang đứng, cursor sẽ nhảy
-// theo sibling pointer sang một page đã đổi nội dung. Giữ latch cả lần duyệt
-// là cách rẻ nhất để range scan có nghĩa, và cũng là chỗ đo được cái giá của
-// việc CHƯA có latch-coupling (nợ P4-5): một scan dài chặn mọi writer.
+// fn chạy KHÔNG giữ latch nào (xem Iter), nên nó được phép gọi lại vào DB.
+// Đổi lại, lần duyệt không phải ảnh chụp một thời điểm: muốn ảnh chụp thì
+// dùng txn.Txn.Scan, hoặc RangeAtomic nếu chỉ cần chặn writer bằng sức mạnh.
 func (d *DB) Range(lo, hi []byte, fn func(key, val []byte) bool) error {
+	it := d.Iter(lo, hi)
+	for it.Next() {
+		if !fn(it.Key(), it.Value()) {
+			break
+		}
+	}
+	return it.Err()
+}
+
+// RangeAtomic là hành vi cũ của Range: giữ d.mu SUỐT lần duyệt, nên nó thật
+// sự là một ảnh chụp của cây — và nó chặn mọi writer trong khoảng thời gian
+// ấy. Chỉ dùng cho kiểm tra tính đúng đắn (verify, fsck, test), không dùng
+// trên đường đọc thường: một scan 200k khóa giữ latch ~40ms, và đó chính là
+// con số mà nợ P4-5 nói tới.
+//
+// fn ở đây KHÔNG được gọi lại vào DB — sẽ khoá chết. Chữ "Atomic" trong tên
+// là để người gọi phải nghĩ tới điều đó.
+func (d *DB) RangeAtomic(lo, hi []byte, fn func(key, val []byte) bool) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.tree.Range(lo, hi, fn)

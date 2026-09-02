@@ -61,8 +61,13 @@ const vacuumBatch = 256
 func (s *Store) Vacuum() (VacuumStats, error) {
 	st := VacuumStats{Horizon: s.horizon()}
 
-	// Thu thập khóa trước, ghi sau. Vừa duyệt cây vừa sửa nó là chỗ mà cursor
-	// của phase 4 không hứa gì cả (nó thả pin giữa hai bước Next).
+	// Thu thập khóa trước, ghi sau. Từ phase 7 thì cursor CÓ hứa (nó tìm lại
+	// chỗ khi số đời cấu trúc lệch — xem btree.Cursor.restore), nên lý do
+	// giữ hai pha không còn là an toàn nữa mà là hai lý do khác, đều đo được:
+	// mỗi lô đọc lại horizon (transaction cũ kết thúc giữa đường thì lô sau
+	// dọn được nhiều hơn), và mỗi lô là MỘT transaction vật lý có kích thước
+	// chặn trên — dọn cả cây trong một transaction là một record log khổng lồ
+	// và một pha undo dài đúng bằng nó nếu crash giữa lúc dọn.
 	var keys [][]byte
 	err := s.d.Range([]byte{0x01}, nil, func(k, raw []byte) bool {
 		if reserved(k) {
@@ -163,7 +168,10 @@ type ChainStats struct {
 
 func (s *Store) ChainStats() (ChainStats, error) {
 	var cs ChainStats
-	err := s.d.Range(nil, nil, func(k, raw []byte) bool {
+	// RangeAtomic, không Range: đây là một phép ĐẾM để kiểm tra tính đúng
+	// đắn (fuzz và crash test đọc BadChains), nên nó cần một ảnh chụp thật.
+	// Đếm trên một cây đang đổi thì con số ra không ứng với trạng thái nào.
+	err := s.d.RangeAtomic(nil, nil, func(k, raw []byte) bool {
 		if reserved(k) {
 			cs.Reserved++
 			return true

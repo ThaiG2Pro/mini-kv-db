@@ -224,10 +224,45 @@ go test ./internal/btree -run '^$' -bench 'Scan' -benchtime=20x
 một biến thể cursor giữ pin suốt một leaf rồi so ns/key. Có thể kết luận "không đáng làm" —
 đó cũng là một cách trả.
 
-### ⏳ P4-5 · Chưa có latch-coupling: cây không an toàn khi nhiều goroutine cùng ghi
+### ⏳ P4-5 · Chưa có latch-coupling — **nửa ĐỌC đã trả ở phase 7, nửa GHI còn nguyên**
 
-`go test -race` xanh chỉ vì mọi test hiện tại đều đơn luồng — đó **không** phải bằng chứng an
-toàn. Đây là phase 7.
+Món này bị **tách làm hai** ở phase 7, vì hoá ra hai nửa của nó có giá khác nhau hẳn.
+
+**Nửa đọc — ĐÃ TRẢ.** Một cursor được nhả latch giữa hai bước `Next()` mà vẫn đúng, nhờ **số đời
+cấu trúc** (`btree.Tree.gen`, tăng ở mọi `Put`/`Delete`/đổi root) + tìm lại chỗ **theo khóa** chứ
+không theo `(page, slot)` (`Cursor.restore`). Đây là *cursor restoration* của InnoDB/SQLite, rẻ
+hơn latch-coupling (crabbing) một bậc: không có thứ tự latch để làm sai, không có deadlock giữa
+các latch để phát hiện. Chi tiết ở [`diary/phase7.md`](../diary/phase7.md).
+
+```bash
+go test ./internal/db/ -run 'TestIterSurvivesConcurrentWriter' -race -count=1 -v
+# 400 khóa, 212 lần tìm lại chỗ, không lần nào lệch thứ tự
+```
+
+**Bài phản chứng** — chứng minh cơ chế trên thật sự đang được kiểm:
+
+```bash
+sed -i 's/if c.gen != c.t.gen {/if false {/' internal/btree/cursor.go
+go test ./internal/btree/ ./internal/db/ ./internal/table/ -count=1 \
+    -run 'CursorRestores|Iter|IndexScanSurvivesWriterMidScan'   # PHẢI đỏ
+sed -i 's/if false {/if c.gen != c.t.gen {/' internal/btree/cursor.go  # phép nghịch — an toàn cả khi cursor.go chưa commit
+```
+
+Lần đầu chạy bài phản chứng ấy, `internal/txn`, `internal/table`, `internal/query` **xanh cả ba** —
+mọi lần quét trong chúng chạy một mình nên `gen` không bao giờ đổi. Đã lấp bằng
+`TestIndexScanSurvivesWriterMidScan`.
+
+**Nửa ghi — CÒN NGUYÊN, và cố ý.** Nhiều goroutine cùng **sửa** cây vẫn là hành vi chưa định
+nghĩa; hiện an toàn nhờ **một writer do code bắt buộc** (P1-2). Không trả vì lý lẽ của phase 6 còn
+nguyên giá trị: nhiều writer vật lý buộc **bỏ pha undo physical** của phase 5 (A và B cùng sửa một
+page, A abort, dán ảnh-trước của A là **xoá luôn việc của B**) — đó chính là lý do Postgres không
+có pha undo. Trả món này là một quyết định kiến trúc, không phải một bản sửa.
+
+**Ghi chú về cách ghi nợ.** Bản cũ của mục này viết *"Đây là phase 7"*, và mục P6-4 viết *"cách
+trả: cần latch-coupling (P4-5) trước"*. Câu thứ hai **sai**: nó tìm cách trả một món nợ của phase 4
+bằng công cụ của phase 4, trong khi thứ tháo được nó là **ảnh chụp MVCC** — một cơ chế ra đời ở
+phase 6, **sau** khi món nợ được ghi. Bài học: ghi **hiện tượng** + **cách kiểm chứng**, đừng ghi
+**cách trả**.
 
 ### 📏 P4-6 · `ns/op` của `BenchmarkGetPool*` không phải số đo I/O
 
@@ -417,20 +452,6 @@ không băm được). Khi đó đường phổ biến (khóa điểm) thành O(
 **Kỳ vọng:** `AcquireDisjoint/holders=256` về gần `holders=1`; `AcquireShared/holders=256` **không
 đổi** (chúng chồng nhau thật, phải xét thật).
 
-### ⏳ P6-4 · `Txn.Scan` materialize cả kết quả thay vì stream
-
-`Txn.Scan` gom hết cặp khóa/giá trị nhìn thấy được vào RAM rồi mới gọi `fn`. Lý do lịch sử: nó
-gọi `db.DB.Range`, mà `Range` giữ `d.mu` **suốt** lần duyệt (xem chú thích tại chỗ), nên không
-được gọi lại vào tầng txn từ trong callback.
-
-```bash
-go test ./internal/txn/ -run '^$' -bench 'Scan' -benchtime=200000x -count=3   # 700µs / 2000 khóa
-```
-
-**Cách trả:** cần **latch-coupling (P4-5)** trước. Chừng nào cursor còn thả pin giữa hai bước
-`Next()` thì stream qua một writer đồng thời là hành vi chưa định nghĩa. Đây là một chỗ **đo được
-cái giá của việc chưa có P4-5**.
-
 ### 🔧 P6-5 · Không có vacuum nền
 
 `Vacuum()` chỉ chạy khi có ai gọi. Bộ dọn opportunistic trong `Txn.apply` gần như miễn phí nhưng
@@ -476,6 +497,144 @@ go run ./cmd/txnlab -work transfer -accounts 2 -workers 12 -ops 100
 tránh việc OCC bỏ lượt (26/1200 ở tranh chấp cao), vừa tránh việc S2PL bắt ứng dụng khai
 `GetForUpdate`? Nếu không thì nó chỉ là một điểm khác trên cùng đường đánh đổi.
 
+### 🔧 P7-1 · `keys.Decode` cấp phát trên đường đọc nóng nhất
+
+```console
+$ go test ./internal/keys/ -run '^$' -bench Decode -benchmem
+BenchmarkDecode-6   	10522184	       117.2 ns/op	     152 B/op	       2 allocs/op
+```
+
+152 B + 2 alloc **mỗi hàng**, và nó nằm trên đường đọc nóng nhất trong máy: mỗi hàng của mỗi seq
+scan. Nhân với 20000 hàng thì đó là 3 MB rác mỗi lần quét cả bảng.
+
+```bash
+# trả bằng: một API giải mã vào buffer có sẵn, rồi so lại
+go test ./internal/keys/ -run '^$' -bench Decode -benchmem   # mục tiêu: 0 alloc
+go test ./internal/query/ -run '^$' -bench SeqStep -benchtime=30x -count=3
+```
+
+**Cần nhìn:** `SeqStep` (413-544 ns/hàng hiện tại) giảm bao nhiêu. Nếu giảm < 10% thì `Decode`
+không phải chỗ nghẽn và **kết luận "không đáng làm" cũng là một cách trả** — nhưng phải có số.
+
+### ⏳ P7-2 · `CreateIndex` back-fill trong MỘT transaction
+
+Write set của **cả bảng** nằm trong RAM lúc back-fill, và không có index build đồng thời. Bảng 10
+triệu hàng là hết bộ nhớ.
+
+```bash
+go run ./cmd/idxlab -work maintain -rows 4000    # hiện tại: 4000 hàng, vừa RAM
+# trả bằng: back-fill theo lô + một trạng thái "index đang xây" trong catalog
+```
+
+**Câu hỏi quyết định khi trả:** trong lúc xây, DML phải ghi vào index đang xây hay không? Postgres
+`CREATE INDEX CONCURRENTLY` cần **hai** lần quét + chờ mọi transaction cũ xong, đúng vì câu hỏi này.
+
+### ⏳ P7-3 · Không có DDL locking
+
+`CreateIndex` chạy song song với DML là hành vi **chưa định nghĩa**. Hiện không có bài test nào
+chạy hai thứ đó cùng lúc, nên `-race` xanh **không** phải bằng chứng.
+
+```bash
+# trả bằng: một bài test chạy CreateIndex đồng thời với Upsert, PHẢI đỏ trước khi sửa
+```
+
+Cùng họ với P4-5 nửa ghi: cả hai đều là "an toàn nhờ chưa ai thử", không phải nhờ cơ chế.
+
+### 📏 P7-4 · `FuzzTableIndex` chưa bão hoà
+
+```console
+$ make fuzz-table
+fuzz: elapsed: 2m0s, execs: 1580 (3/sec), new interesting: 108 (total: 259)
+```
+
+108 hạt mới trong 1580 exec (**6.8%**) nghĩa là corpus **còn đang mọc** — 120 giây chưa đủ để nói
+"sạch". Chỉ 3 exec/giây vì mỗi exec có crash + mở lại + `Verify()` toàn cây.
+
+```bash
+go test ./internal/table/ -run '^$' -fuzz FuzzTableIndex -fuzztime 30m -fuzzminimizetime 1s
+```
+
+**Cần nhìn:** `new interesting` phải **về gần 0** ở phút cuối. Nếu vẫn mọc thì bộ sinh input đang
+tạo ra quá nhiều ca giống nhau, và phải sửa bộ sinh chứ không phải chạy lâu hơn.
+
+### 📏 P7-5 · Điểm hoà vốn 36.8% chỉ đúng khi CẢ CÂY nằm trong buffer pool
+
+Đây là **giới hạn của kết luận chính** của phase 7. Điểm hoà vốn đo được cao hơn hẳn cái "thường
+5-20%" của sách, và lý do là ở quy mô này **không có I/O thật nào cả**: `CFetch/CSeq` đo được 4.5x
+thay vì 20x.
+
+```bash
+go run ./cmd/idxlab -work breakeven -rows 200000 -frames 64 -repeat 10
+```
+
+**Kỳ vọng:** pool 64 frame (256 KB) trên 200000 hàng ⇒ mỗi lần tra bảng là một `pread` thật ⇒
+`CFetch/CSeq` phải **tăng** và điểm hoà vốn phải **tụt** về dải 5-20%. Nếu **không** tụt thì hoặc
+page cache của kernel đang đỡ hết (nợ P0-1/P0-2, cần `O_DIRECT`), hoặc mô hình chi phí thiếu một
+số hạng.
+
+### 🔧 P7-6 · Selectivity dùng phân bố đều, không có histogram
+
+```console
+$ go run ./cmd/idxlab -work estimate
+city = 'HN' (lệch 99%)            204      19800     97.0x  IndexScan
+```
+
+Lệch **97x** trên cột lệch 99%, và hậu quả không nằm ở con số mà ở cột cuối: planner chọn
+`IndexScan` cho một truy vấn lấy **99% cả bảng** — kế hoạch **tệ nhất có thể**. Mô hình chi phí
+đúng vẫn cho kế hoạch tệ nếu ước lượng số hàng sai.
+
+```bash
+# trả bằng: histogram equi-depth trong catalog + một lệnh ANALYZE
+go test ./internal/query/ -run TestEstimateIsWrongOnSkew -count=1   # PHẢI đỏ sau khi trả
+```
+
+`TestEstimateIsWrongOnSkew` khẳng định **đúng cái giới hạn này**, nên nó sẽ đỏ khi món nợ được
+trả — và đỏ đúng lúc. Đó là chủ ý, không phải sơ suất.
+
+### 📏 P7-7 · `DefaultCost` là ba con số ĐOÁN, và đã biết sai vì HAI lý do độc lập
+
+```go
+var DefaultCost = CostModel{CSeq: 1, CIndex: 0.6, CFetch: 20}
+```
+
+Hai lý do sai, **độc lập với nhau**:
+
+1. **Không có I/O thật** ở quy mô này ⇒ `CFetch/CSeq` đo được **4.5x**, không phải 20x (lệch 4.4x).
+2. **Không tính tương quan** ⇒ ngay cả hằng số đo được cũng lệch **1.6-2.2x**, vì `CFetch` đo bằng
+   khóa nhảy lung tung còn index scan tra bảng **theo thứ tự index**.
+
+```bash
+make idxlab-breakeven    # cột planner(đoán) và planner(đo) đều có dòng CHỌN SAI
+```
+
+**Cố ý giữ nguyên hằng số sai** — nó là cột `planner(đoán)` của bảng deliverable, và một cột cho
+thấy hằng số sai làm planner chọn sai ở dải nào thì đúng ở **mọi** máy, còn một hằng số đúng thì
+chỉ đúng ở máy này. Trả bằng: đo lúc mở database rồi lưu vào catalog — tức `ANALYZE`, và lúc đó
+phải lưu **cả hai** `CFetch` cùng một hệ số tương quan cho từng index (đúng `indexCorrelation` của
+Postgres).
+
+### 🔧 P7-8 · Bất biến của workload chuyển tiền là ĐỐI XỨNG nên gần như mù
+
+Phát hiện khi truy một bài test đỏ 1/6 lần của phase 6. "Tổng số dư không đổi" là bất biến đối
+xứng ⇒ hai lost update **triệt tiêu** nhau và tổng lại đúng. Với `accounts=2` (đối xứng tối đa),
+tổng **đúng ở 5/6 lần chạy**.
+
+```bash
+go run ./cmd/txnlab -work transfer -accounts 2 -workers 12 -ops 100
+```
+
+**Trả bằng:** thêm một bất biến **không đối xứng** — ví dụ *không tài khoản nào được âm* — rồi đo
+lại sức phát hiện của từng mức isolation. Kỳ vọng: mức thấp vỡ ở **mọi** lần chạy thay vì 1/6, và
+lúc đó `maxTries` ở `TestTransferInvariantPerLevel` bỏ được.
+
+### ⏳ P7-9 · Chưa có `ORDER BY` dùng index, chưa có `Filter` đẩy xuống
+
+Index scan đã trả về **theo thứ tự index** (`TestIndexScanOrderFollowsIndexNotPK` khẳng định điều
+đó) nhưng planner chưa biết dùng tính chất ấy để **bỏ** hẳn bước sắp xếp. Và `Query` chưa có
+predicate nào ngoài khoảng trên cột dẫn đầu.
+
+Để phase 8, cùng với parser — vì hình dạng của `Filter`/`Project` phụ thuộc vào hình dạng AST.
+
 ---
 
 ## Đã trả
@@ -493,6 +652,7 @@ tránh việc OCC bỏ lượt (26/1200 ở tranh chấp cao), vừa tránh vi�
 | ⏳ P1-2 · Chưa có transaction thật | `Begin`/`Commit`/`Abort` trong `internal/db`; một writer **do code bắt buộc** | `TestSingleWriter` → `ErrWriterBusy`. Phần reader đồng thời tách thành **P1-2b** |
 | ⏳ P2-3 · Page không có checksum riêng | **Chọn không** thêm checksum cho page: crc32c mỗi record log + **ảnh trọn page** ở lần chạm đầu sau mỗi checkpoint (`full_page_writes` của Postgres), redo áp vô điều kiện | `TestFullPageWriteAppearsOncePerCheckpoint`. Lý do phải thế: page bị torn thì `pageLSN` là **rác**, nên chốt `pageLSN >= rec.LSN` sẽ bỏ qua đúng cái page đang hỏng. Giá: payload 4244 vs 284 byte (`BenchmarkEncodeFullPage`) |
 | ⏳ P4-4 · Root đổi `PageID` mỗi lần cây cao thêm | **Quyết định: giữ cho root di chuyển.** Mỗi lần đổi sinh một record ROOT được log; meta chỉ giữ root ở lần checkpoint cuối | `make wallab`: `ROOT  9 record  504 byte  56 byte/record`. Không cố định root vào một page id, vì như thế phải **copy nội dung** mỗi lần cây cao thêm — mà việc copy ấy lại phải log trọn page, đắt hơn 56 byte |
+| ⏳ P6-4 · `Txn.Scan` materialize cả kết quả | `db.Iter` (latch chỉ giữ **một bước** `Next()`) + `Txn.Scan` viết lại thành **merge join** của hai dòng đã sắp: cursor trên cây, và bản sao đã sắp của phần write set trong khoảng. Cùng khóa thì write set thắng (*read-your-own-writes*) | `BenchmarkScanLimit` 1423-1668 ns vs quét cả bảng ~9.9 ms = **5032x** (`go run ./cmd/idxlab -work stream`). Bản materialize cho tỉ số **1x** vì nó đọc cả khoảng trước khi gọi `fn` lần đầu. Và món nợ này hoá ra **chặn cả phase 7**: index scan là một phép truy cây **trong** callback của một phép duyệt cây, nên với `Range` cũ nó **tự khoá chết** — `TestIterCallbackCanReadBack` là bài test của đúng hình đó |
 | 🔧 P3-0 · `victim()` quay vô hạn khi WAL rule chặn mọi ứng viên | đếm số lần bị chặn, hết một vòng frame thì `ErrNoFrame` | `go test -run TestWALRule -timeout 10s` trước khi sửa: `panic: test timed out after 10s`; sau khi sửa: PASS, `store.Writes = 0` |
 
 ---

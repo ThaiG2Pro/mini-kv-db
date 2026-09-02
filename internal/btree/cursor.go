@@ -1,6 +1,10 @@
 package btree
 
-import "minidb/internal/pager"
+import (
+	"bytes"
+
+	"minidb/internal/pager"
+)
 
 // Cursor duyệt cây theo thứ tự khóa tăng dần. Nó là nền của mọi `WHERE x > ?`
 // và của mọi iterator ở tầng trên.
@@ -10,6 +14,10 @@ import "minidb/internal/pager"
 // cho mỗi leaf) nhưng đổi lại không ai có thể quên đóng cursor và làm rò rỉ
 // một frame vĩnh viễn — với pool 64 frame thì vài cursor bỏ quên là chết cả
 // hệ thống. Giá của lựa chọn này đo được ở BenchmarkScan.
+//
+// Phase 7 thêm một thứ: cursor mang theo `gen`, số đời cấu trúc của cây lúc
+// nó đứng vào chỗ hiện tại. Nhờ nó, người gọi được phép NHẢ latch giữa hai
+// bước Next() — cái mà phase 4 không cho phép. Xem restore().
 type Cursor struct {
 	t    *Tree
 	leaf pager.PageID
@@ -18,51 +26,89 @@ type Cursor struct {
 	val  []byte
 	ok   bool
 	err  error
+
+	// gen là Tree.gen lúc (leaf, idx) được xác lập. Cây đổi cấu trúc thì cặp
+	// ấy hết nghĩa: page có thể đã bị split, bị merge, hoặc bị trả về
+	// freelist rồi cấp lại cho một node KHÁC HẲN. Không có con số này thì
+	// cursor sẽ đọc rác một cách hoàn toàn im lặng.
+	gen uint64
+
+	// restores đếm số lần phải tìm lại chỗ. Nó là số đo của phase 7: nếu nó
+	// bằng 0 trong một lab có writer chạy song song thì cơ chế này chưa bao
+	// giờ được thử, và bài test không chứng minh gì cả.
+	restores int
 }
 
 // Seek đặt cursor ở entry đầu tiên có khóa >= key. Đây là *lower bound*, đúng
 // ngữ nghĩa của một index range scan.
 func (t *Tree) Seek(key []byte) *Cursor {
 	c := &Cursor{t: t}
-	id := t.root
-	for {
-		n, err := t.pin(id)
-		if err != nil {
-			c.err = err
-			return c
-		}
-		if n.isLeaf() {
-			i, _ := n.search(key)
-			c.leaf, c.idx = id, i
-			t.unpin(id, false)
-			c.load()
-			return c
-		}
-		child := n.childAt(n.childIndex(key))
-		t.unpin(id, false)
-		id = child
-	}
+	c.seek(key)
+	return c
 }
 
 // First đặt cursor ở khóa nhỏ nhất — đi dọc mép trái của cây.
 func (t *Tree) First() *Cursor {
 	c := &Cursor{t: t}
-	id := t.root
+	c.seek(nil)
+	return c
+}
+
+// seek đi từ root xuống leaf chứa key (key == nil: mép trái).
+//
+// Nó ghi lại t.gen TRƯỚC khi đi xuống, không phải sau. Ghi sau là một cửa sổ
+// đua: cây đổi trong lúc ta đang xuống, ta lưu số đời MỚI cho một vị trí tìm
+// được theo hình CŨ, và lần Next() kế sẽ tin vào một vị trí đã hết nghĩa.
+func (c *Cursor) seek(key []byte) {
+	c.gen = c.t.gen
+	id := c.t.root
 	for {
-		n, err := t.pin(id)
+		n, err := c.t.pin(id)
 		if err != nil {
-			c.err = err
-			return c
+			c.err, c.ok = err, false
+			return
 		}
 		if n.isLeaf() {
-			c.leaf, c.idx = id, 0
-			t.unpin(id, false)
+			i := 0
+			if key != nil {
+				i, _ = n.search(key)
+			}
+			c.leaf, c.idx = id, i
+			c.t.unpin(id, false)
 			c.load()
-			return c
+			return
 		}
 		child := n.childAt(0)
-		t.unpin(id, false)
+		if key != nil {
+			child = n.childAt(n.childIndex(key))
+		}
+		c.t.unpin(id, false)
 		id = child
+	}
+}
+
+// restore tìm lại chỗ sau khi cây đã đổi cấu trúc: đi lại từ root tới khóa
+// đầu tiên LỚN HƠN khóa vừa trả về.
+//
+// Đây là cách InnoDB/SQLite khôi phục vị trí cursor sau split, và nó rẻ hơn
+// latch-coupling một bậc về độ phức tạp: không cần latch trên page, chỉ cần
+// biết "cây đã đổi" và biết mình đang ở đâu theo KHÓA (một giá trị logic,
+// không phụ thuộc hình cây) thay vì theo (page, slot).
+//
+// Cái giá phải nói thẳng: giữa hai bước Next() có thể có writer chen vào, nên
+// một lần duyệt KHÔNG còn là ảnh chụp một thời điểm của cây. Ở tầng txn điều
+// đó vô hại vì thứ quyết định nhìn thấy gì là snapshot MVCC của phase 6, chứ
+// không phải cái latch của phase 4. Ở tầng btree thuần thì nó là hành vi
+// "read committed" — ghi vào doc của Tree.Range.
+func (c *Cursor) restore() {
+	last := append([]byte(nil), c.key...)
+	c.restores++
+	c.seek(last)
+	// seek cho lower bound; khóa cũ có thể còn đó (thì phải bỏ qua) hoặc đã
+	// bị xóa (thì ta đã ở sau nó). Vòng lặp xử lý cả trùng khóa lặp lại.
+	for c.ok && c.err == nil && bytes.Compare(c.key, last) <= 0 {
+		c.idx++
+		c.load()
 	}
 }
 
@@ -104,6 +150,10 @@ func (c *Cursor) Next() bool {
 	if !c.ok || c.err != nil {
 		return false
 	}
+	if c.gen != c.t.gen {
+		c.restore()
+		return c.ok && c.err == nil
+	}
 	c.idx++
 	c.load()
 	return c.ok
@@ -115,7 +165,14 @@ func (c *Cursor) Key() []byte   { return c.key }
 func (c *Cursor) Value() []byte { return c.val }
 func (c *Cursor) Err() error    { return c.err }
 
+// Restores là số lần cursor phải tìm lại chỗ vì cây đổi cấu trúc dưới chân nó.
+func (c *Cursor) Restores() int { return c.restores }
+
 // Range gọi fn cho mọi khóa trong [lo, hi). hi == nil nghĩa là tới hết.
+//
+// Ngữ nghĩa: KHÔNG phải ảnh chụp. Nếu có writer chạy song song (và người gọi
+// nhả latch giữa hai bước — xem db.Iter) thì lần duyệt có thể thấy cả cái ghi
+// sau khi nó bắt đầu. Muốn ảnh chụp thì phải hỏi tầng có version: txn.Txn.Scan.
 func (t *Tree) Range(lo, hi []byte, fn func(key, val []byte) bool) error {
 	c := t.Seek(lo)
 	for c.Valid() {

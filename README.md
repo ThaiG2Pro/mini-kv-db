@@ -1,7 +1,7 @@
 # minidb
 
 Một database mini viết bằng Go để học **DB internals** — storage layer, B+Tree, WAL,
-recovery, MVCC — chứ không phải để dùng thật.
+recovery, MVCC, secondary index và query planner — chứ không phải để dùng thật.
 
 - Hướng đi chung: [`ROADMAP.md`](./ROADMAP.md)
 - Nhật ký từng phase: [`diary/`](./diary)
@@ -20,6 +20,7 @@ cmd/btreelab/   phase 4 — hình dạng cây theo thứ tự chèn, fanout, spl
 cmd/crashlab/   phase 5 — 200 lần kill -9 ngẫu nhiên rồi kiểm durability; -nowrite = bài phản chứng
 cmd/wallab/     phase 5 — soi một file WAL: gồm record gì, bao nhiêu phần trăm là thuế
 cmd/txnlab/     phase 6 — ba bảng: anomaly × mức isolation, chuyển tiền N goroutine, phình version
+cmd/idxlab/     phase 7 — năm bảng: điểm hoà vốn selectivity, thuế của index, hình byte của khóa
 cmd/dbcheck/    fsck cho file minidb — meta, freelist, double free, page mồ côi
 scripts/        linux-baseline.sh (đo baseline có thể so máy), dm-flakey.sh (bơm lỗi thiết bị)
 docs/           debts.md (sổ nợ + lệnh trả từng món), linux-baseline.md (đo trên Linux thuần)
@@ -32,6 +33,9 @@ internal/wal/   phase 5 — log record + crc32c, diff theo khối, LSN = offset 
 internal/db/    phase 5 — transaction (Begin/Commit/Abort), checkpoint mờ, recovery 3 pha ARIES
 internal/lock/  phase 6 — lock manager S2PL: S/X, khóa điểm và khoảng, deadlock qua wait-for graph
 internal/txn/   phase 6 — MVCC: chuỗi version, snapshot, 4 mức isolation, vacuum, deferred write
+internal/keys/  phase 7 — bộ mã hoá khóa giữ thứ tự: composite, ASC/DESC bằng phép bù, canonical
+internal/table/ phase 7 — catalog + nhiều bảng/index trong MỘT cây theo tiền tố oid; bất biến hàng<->index
+internal/query/ phase 7 — 3 kế hoạch (seq/index/index-only), mô hình chi phí, ước lượng selectivity
 diary/          nhật ký học: giả thuyết sai, số đo, invariant
 skills/         quy ước làm việc trong repo (đọc trước khi ghi diary)
 ```
@@ -61,6 +65,13 @@ make txnlab-contention              # phase 6: chỗ MVCC (lạc quan) THUA lock
 make test-txn                       # phase 6: bảng anomaly khẳng định theo CẢ HAI chiều
 make bench-txn                      # phase 6: giá mỗi mức isolation, giá abort, giá phình version
 make fuzz-txn                       # phase 6: codec chuỗi version phải canonical + sống qua crash
+make idxlab                         # phase 7: 5 bảng — hoà vốn selectivity, thuế index, ước lượng
+make idxlab-breakeven               # phase 7: chỉ bảng hoà vốn, 50000 hàng (số ổn định hơn)
+make idxlab-bytes                   # phase 7: hình BYTE của khóa composite — vì sao chỉ tiền tố bên trái
+make test-index                     # phase 7: ba kế hoạch phải cho CÙNG kết quả
+make bench-index                    # phase 7: ba hằng số của mô hình chi phí + giá index ở đường ghi
+make fuzz-keys                      # phase 7: thứ tự byte phải BẰNG thứ tự logic, ở mọi kiểu/chiều sắp
+make fuzz-table                     # phase 7: bất biến hàng<->index phải sống qua crash + mở lại
 make fuzz-btree                     # phase 4: fuzz chuỗi Put/Delete, đối chiếu map + Verify()
 make test                           # toàn bộ test (40 điểm crash của pager + bất biến của page)
 make check                          # fsck file data/test.db

@@ -15,6 +15,30 @@ import (
 // hai mức cao giữ được tổng, hai mức thấp phá tổng. Nếu vế thứ hai xanh thì
 // bài test này không chứng minh gì — nó chỉ chứng minh rằng workload chưa đủ
 // đồng thời để anomaly kịp xảy ra.
+//
+// Sửa ở phase 7, sau khi phát hiện bài test này ĐỎ NGẪU NHIÊN khoảng 1/6 lần
+// chạy — và đỏ ở ĐÚNG một ô: read-uncommitted. Kiểm bằng git worktree ở HEAD
+// của phase 6 nên nó là lỗi có từ trước, không phải do phase 7 gây ra.
+//
+// Nguyên nhân, và nó đáng nhớ hơn cả bản sửa: hai bất biến khác nhau có SỨC
+// PHÁT HIỆN khác nhau.
+//
+//   - "Tổng số dư không đổi" là một bất biến ĐỐI XỨNG: một lượt chuyển tiền
+//     cộng ở một chỗ và trừ ở chỗ khác, nên hai update bị mất có thể TRIỆT
+//     TIÊU nhau và tổng lại đúng. Thử với accounts=2 (mọi lượt đều là 0↔1,
+//     tức đối xứng tối đa) thì tổng ĐÚNG ở 5/6 lần chạy — bất biến gần như mù.
+//   - Ở read-uncommitted còn một đường tự sửa nữa, ngược hoàn toàn trực giác:
+//     dirty read có thể VÁ lost update. B đọc được số dư mới CHƯA COMMIT của A
+//     rồi tính tiếp từ đó, nên cái update của A không bị mất. Mức isolation
+//     yếu nhất đôi khi cho kết quả đúng nhờ chính cái tính chất làm nó yếu.
+//
+// Nên ở hai mức thấp, anomaly là chuyện XÁC SUẤT theo bản chất, không phải do
+// workload thiếu đồng thời. Bản sửa: chạy tới maxTries lần và đòi anomaly xảy
+// ra ít nhất một lần. Đòi nó xảy ra ở MỌI lần là một khẳng định sai về hệ
+// thống, và bài test sẽ đỏ oan mãi mãi.
+//
+// Ở hai mức cao thì KHÔNG có xác suất nào: mọi lần chạy đều phải giữ được
+// tổng, và một lần lệch là một con bug.
 func TestTransferInvariantPerLevel(t *testing.T) {
 	const (
 		workers  = 6
@@ -22,34 +46,49 @@ func TestTransferInvariantPerLevel(t *testing.T) {
 		accounts = 4
 		initial  = 1000
 		amount   = 7
+		// maxTries: (1/6)^5 ≈ 1/7776, đủ để bài test không đỏ oan mà vẫn đỏ
+		// thật nếu mức thấp bỗng chặn được lost update.
+		maxTries = 5
 	)
-	type want struct {
-		holds bool
-	}
-	expect := map[Level]want{
-		ReadUncommitted: {false},
-		ReadCommitted:   {false},
-		RepeatableRead:  {true},
-		Serializable:    {true},
+	expectHolds := map[Level]bool{
+		ReadUncommitted: false,
+		ReadCommitted:   false,
+		RepeatableRead:  true,
+		Serializable:    true,
 	}
 	for _, l := range AllLevels {
 		t.Run(l.String(), func(t *testing.T) {
-			s, _ := openStore(t)
-			s.Locks().Timeout = 2 * ProbeWait
-			res, err := RunTransfers(s, l, workers, ops, accounts, initial, amount, 42)
-			if err != nil {
-				t.Fatal(err)
+			holds := expectHolds[l]
+			tries := 1
+			if !holds {
+				tries = maxTries
 			}
-			t.Log(res.String())
-			if res.OK() != expect[l].holds {
-				if expect[l].holds {
-					t.Fatalf("%s phải giữ được tổng, nhưng lệch %+d", l, res.Total-res.Want)
+			broke := false
+			for i := 0; i < tries; i++ {
+				s, _ := openStore(t)
+				s.Locks().Timeout = 2 * ProbeWait
+				res, err := RunTransfers(s, l, workers, ops, accounts, initial, amount,
+					42+int64(i))
+				if err != nil {
+					t.Fatal(err)
 				}
-				t.Fatalf("%s giữ được tổng — workload chưa đủ đồng thời để anomaly xảy ra, "+
-					"nên bài test này chưa chứng minh gì", l)
+				t.Log(res.String())
+				if res.Committed == 0 {
+					t.Fatalf("%s: không có transaction nào commit được", l)
+				}
+				if holds && !res.OK() {
+					t.Fatalf("%s phải giữ được tổng ở MỌI lần chạy, nhưng lệch %+d",
+						l, res.Total-res.Want)
+				}
+				if !res.OK() {
+					broke = true
+					break
+				}
 			}
-			if res.Committed == 0 {
-				t.Fatalf("%s: không có transaction nào commit được", l)
+			if !holds && !broke {
+				t.Fatalf("%s giữ được tổng ở cả %d lần chạy — mức này phải để lọt"+
+					" lost update, nên hoặc workload chưa đủ đồng thời, hoặc ta đã"+
+					" vô tình chặn được anomaly mà không biết", l, tries)
 			}
 		})
 	}
