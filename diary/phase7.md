@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** 2 buổi
 - **Bắt đầu:** 2026-09-02 · **Kết thúc:** 2026-09-03
 - **Trạng thái:** ✅ xong
-- **Commit:** `_(git rev-parse --short HEAD tại lúc chốt phase)_`
+- **Commit:** `d59c252`
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Sáu tháng sau đọc lại phải chạy lại được.
@@ -557,7 +557,7 @@ vẹn từng ô — kể cả sau khi `Txn.Scan` bị viết lại hoàn toàn t
 
 ## Số đo
 
-**Lệnh · ngày 2026-09-03 · commit `_(chốt phase)_` · máy:** i5-1235U, WSL2, ext4, go1.26.2.
+**Lệnh · ngày 2026-09-03 · commit `d59c252` · máy:** i5-1235U, WSL2, ext4, go1.26.2.
 
 ### Ba hằng số của mô hình chi phí — hai bộ đo độc lập phải khớp
 
