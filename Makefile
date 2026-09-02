@@ -1,4 +1,4 @@
-.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree check clean
+.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree crashlab crashlab-full crashlab-nosync crashlab-nowrite wallab bench-wal fuzz-db check clean
 
 all: fmt vet test
 
@@ -66,6 +66,50 @@ bench-btree:
 
 fuzz-btree:
 	go test ./internal/btree/ -run '^$$' -fuzz FuzzTreeOps -fuzztime 120s -fuzzminimizetime 1s
+
+# ---------- Phase 5: WAL + recovery ----------
+
+# Bài kiểm tra quyết định của phase 5. Chạy nhanh (20 vòng) để dùng thường
+# xuyên; deliverable thật là crashlab-full.
+crashlab:
+	go run ./cmd/crashlab -n 20
+
+# Deliverable: 200 lần kill -9 ở thời điểm ngẫu nhiên, durability không sai
+# lần nào. Mỗi vòng đẻ một tiến trình con, để nó chạy 60-700ms rồi SIGKILL.
+crashlab-full:
+	go run ./cmd/crashlab -n 200 -keep
+
+# Chứng minh bài test biết báo SAI. Tắt fsync rồi chạy lại — nếu vẫn xanh thì
+# bài test không kiểm được gì cả. (Kết quả đáng ngạc nhiên: kill -9 KHÔNG đủ
+# để lộ ra việc thiếu fsync, vì page cache của kernel sống lâu hơn tiến trình.
+# Xem diary/phase5.md.)
+crashlab-nosync:
+	-go run ./cmd/crashlab -n 20 -nosync
+
+# Bài phản chứng THẬT. -nowrite giữ byte log trong buffer của tiến trình, nên
+# kill -9 mang chúng đi cùng — đúng cái mà mất điện làm. Target này PHẢI đỏ:
+# nếu nó xanh thì bộ kiểm tra không kiểm gì cả và con số "200/200 đúng" ở trên
+# vô giá trị. Dấu - ở đầu để make không dừng vì exit code 1 mong đợi.
+crashlab-nowrite:
+	-go run ./cmd/crashlab -n 10 -nowrite
+
+# Soi một file WAL: log dài bao nhiêu, gồm gì, bao nhiêu phần trăm là thuế.
+wallab:
+	@rm -rf data/wal && mkdir -p data/wal
+	go run ./cmd/crashlab -child -dir data/wal -seed 1 -txns 400 -frames 16
+	go run ./cmd/wallab -tail 12 data/wal/data.db.wal
+
+# Giá của durability, và group commit: cùng số khóa, khác số khóa mỗi txn.
+bench-wal:
+	go test ./internal/db/ -run '^$$' -bench 'Insert' -benchtime=2000x -timeout 30m
+	go test ./internal/db/ -run '^$$' -bench 'Recover' -benchtime=10x -timeout 30m
+# Get cần chạy đủ lâu để page nóng lên: ở 2000 vòng mỗi khóa chỉ được tra một
+# lần nên đo ra chi phí đọc đĩa, không phải chi phí của đường đọc.
+	go test ./internal/db/ -run '^$$' -bench 'Get' -benchtime=300000x -count=3
+	go test ./internal/wal/ -run '^$$' -bench . -benchmem
+
+fuzz-db:
+	go test ./internal/db/ -run '^$$' -fuzz FuzzCrashRecover -fuzztime 120s -fuzzminimizetime 1s
 
 # fsck: soi file database, thoát 1 nếu có lỗi nghiêm trọng
 check:

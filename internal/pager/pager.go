@@ -122,6 +122,19 @@ type Pager struct {
 	free    []PageID
 	pending []PageID
 
+	// metaPending: các page CHỨA freelist mà meta hợp lệ HIỆN TẠI đang trỏ
+	// tới. Chúng chỉ được cấp lại sau khi một meta MỚI đã durable.
+	//
+	// Trước phase 5 chúng nằm chung trong `pending` và điều đó đúng, vì
+	// `pending` chỉ được rót vào `free` ở đầu Commit — tức là ở đúng lúc meta
+	// sắp bị thay. WAL tách hai mốc đó ra: `pending` giờ được rót ở lúc
+	// TRANSACTION commit, còn meta chỉ đổi ở lúc CHECKPOINT. Để chung là cấp
+	// lại một freelist page mà meta trên đĩa vẫn đang trỏ vào; ghi đè nó bằng
+	// một node B+Tree; rồi lần mở file sau, loadFreelist đọc node đó như một
+	// freelist page. Đã dính đúng vậy: crashlab báo "đọc freelist page 363:
+	// EOF" và "page 5 kiểu 4 không phải node B+Tree" ở 4/20 vòng.
+	metaPending []PageID
+
 	// Policy: cách chọn page khi tái dùng. Mặc định AllocLIFO.
 	Policy AllocPolicy
 
@@ -303,6 +316,17 @@ func (p *Pager) WritePage(id PageID, buf []byte) error {
 	if uint32(id) >= p.meta.pageCount {
 		return fmt.Errorf("%w: id=%d pageCount=%d", ErrBadPageID, id, p.meta.pageCount)
 	}
+	// Chốt chặn thường trực, không phải chỉ khi debug: tầng trên KHÔNG ĐƯỢC
+	// ghi đè một page mà meta hợp lệ hiện tại đang dùng làm chuỗi freelist.
+	//
+	// Giữ lại vì nó là cái đã bắt được bug khó nhất của phase 5. Ba lần sửa
+	// đầu đều chỉ chữa triệu chứng ("đọc freelist page 4096: EOF") ở cách chỗ
+	// hỏng hàng trăm mili giây; đặt kiểm tra ngay tại lời ghi thì stack trace
+	// chỉ thẳng vào bufpool.victim -> writeFrame và mọi thứ sáng ra trong một
+	// lần chạy. Giá: một vòng lặp trên danh sách thường dài 0-2 phần tử.
+	if p.inMetaPending(id) {
+		return fmt.Errorf("%w: page %d đang là page chứa freelist của meta hiện tại", ErrMetaPageBusy, id)
+	}
 	p.Writes++
 	return writeFull(p.f, buf, int64(id)*PageSize)
 }
@@ -311,6 +335,20 @@ func (p *Pager) WritePage(id PageID, buf []byte) error {
 
 // Allocate cấp một page: ưu tiên tái dùng từ freelist, hết thì nới file.
 func (p *Pager) Allocate() (PageID, error) {
+	// Lọc trước: không bao giờ cấp một page mà meta HỢP LỆ HIỆN TẠI đang dùng
+	// làm page chứa freelist. Đáng lẽ metaPending và free đã rời nhau, nhưng
+	// "đáng lẽ" là thứ đã sai một lần rồi (xem FreeNow trong wal.go), và cái
+	// giá của một lần lọt lưới là ghi đè lên chính chuỗi freelist mà lần mở
+	// file sau phải đọc. Chốt chặn cuối đặt ở đây, chỗ DUY NHẤT page được cấp.
+	if len(p.metaPending) > 0 {
+		kept := p.free[:0]
+		for _, id := range p.free {
+			if !p.inMetaPending(id) {
+				kept = append(kept, id)
+			}
+		}
+		p.free = kept
+	}
 	if n := len(p.free); n > 0 {
 		// p.free giữ thứ tự tăng dần (loadFreelist đọc từ danh sách đã sort,
 		// và Commit sort lại trước khi ghi). Nên LIFO = lấy cuối, lowest = đầu.
@@ -330,6 +368,15 @@ func (p *Pager) Allocate() (PageID, error) {
 		return 0, err
 	}
 	return id, nil
+}
+
+func (p *Pager) inMetaPending(id PageID) bool {
+	for _, h := range p.metaPending {
+		if h == id {
+			return true
+		}
+	}
+	return false
 }
 
 // Free đánh dấu page bỏ đi. Page vào `pending`: chưa được cấp phát lại trong
@@ -364,8 +411,9 @@ func (p *Pager) loadFreelist() error {
 		for i := uint32(0); i < n; i++ {
 			p.free = append(p.free, PageID(binary.LittleEndian.Uint32(buf[offFLIDs+4*int(i):])))
 		}
-		// Bản thân page freelist này sẽ bị thay ở commit tới -> page bỏ đi.
-		p.pending = append(p.pending, id)
+		// Bản thân page freelist này sẽ bị thay ở lần ghi meta tới. Cho tới
+		// lúc đó meta hợp lệ vẫn trỏ vào nó -> metaPending, không phải pending.
+		p.metaPending = append(p.metaPending, id)
 		id = next
 	}
 	return nil
@@ -439,38 +487,11 @@ func (p *Pager) writeFreelist() (head PageID, hosts []PageID, err error) {
 func (p *Pager) Commit(root PageID) error {
 	// pending của txn trước giờ đã an toàn: meta ta sắp ghi đè không còn là
 	// đích rollback nữa (đích rollback là meta của commit gần nhất).
-	p.free = append(p.free, p.pending...)
-	p.pending = nil
-	sort.Slice(p.free, func(i, j int) bool { return p.free[i] < p.free[j] })
-
-	flHead, flHosts, err := p.writeFreelist() // (1)
-	if err != nil {
-		return err
-	}
-	if err := p.sync(); err != nil { // (2)
-		return err
-	}
-
-	m := meta{
-		root:      root,
-		freelist:  flHead,
-		txnID:     p.meta.txnID + 1,
-		pageCount: p.meta.pageCount,
-	}
-	target := MetaPageOf(m.txnID)
-	p.Writes++
-	if err := writeFull(p.f, encodeMeta(m), int64(target)*PageSize); err != nil { // (3)
-		return err
-	}
-	if err := p.sync(); err != nil { // (4)
-		return err
-	}
-
-	p.meta = m
-	// Các freelist page vừa ghi đang được meta MỚI trỏ tới nên chưa được ghi
-	// đè; commit sau sẽ thay chúng, lúc đó chúng thành page bỏ đi -> pending.
-	p.pending = append(p.pending, flHosts...)
-	return nil
+	//
+	// Từ phase 5, hai nửa này tách ra: dưới WAL, "pending an toàn rồi" xảy ra
+	// ở lúc transaction commit chứ không ở lúc ghi meta. Xem pager/wal.go.
+	p.ReleasePending()
+	return p.CommitMeta(root)
 }
 
 func (p *Pager) sync() error {

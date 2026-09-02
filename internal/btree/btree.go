@@ -43,6 +43,11 @@ type Tree struct {
 	// đúng cái giá của nó.
 	RightmostSplit bool
 
+	// J nhận báo cáo mọi thay đổi page để tầng trên ghi WAL (phase 5).
+	// Nil = không log gì — đúng hành vi phase 4, và là cách bench tách được
+	// giá của WAL khỏi giá của cây.
+	J Journal
+
 	sc scratch
 
 	// cellBuf là chỗ dựng cell trước khi chép vào page. Một buffer dùng lại
@@ -62,6 +67,21 @@ func Create(pool *bufpool.Pool) (*Tree, error) {
 		return nil, err
 	}
 	return Open(pool, id), nil
+}
+
+// CreateLogged giống Create nhưng báo cáo qua journal: page gốc là một ALLOC
+// và một lần đổi root, cả hai đều phải nằm trong log trước khi ai đó tin rằng
+// database này tồn tại.
+func CreateLogged(pool *bufpool.Pool, j Journal) (*Tree, error) {
+	t := Open(pool, 0)
+	t.J = j
+	id, _, err := t.newPage(page.TypeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	t.unpin(id, true)
+	t.setRoot(id)
+	return t, j.Err()
 }
 
 // Open mở cây đã có, root lấy từ meta page của pager.
@@ -85,10 +105,23 @@ func (t *Tree) pin(id pager.PageID) (node, error) {
 		t.pool.Unpin(id, false)
 		return node{}, fmt.Errorf("%w: page %d kiểu %d không phải node B+Tree", ErrCorruptNode, id, typ)
 	}
+	if t.J != nil {
+		t.J.PageIn(id, n.p)
+	}
 	return n, nil
 }
 
 func (t *Tree) unpin(id pager.PageID, dirty bool) {
+	// Sinh log record TRƯỚC khi thả pin: sau khi thả, pool được phép đuổi page
+	// đi bất cứ lúc nào, và nếu record chưa có thì đó đúng là vi phạm WAL rule
+	// mà không ai bắt được (pageLSN vẫn là giá trị cũ nên FlushLog cho qua).
+	if t.J != nil && t.J.PageOut(id, dirty) {
+		// Journal so byte và thấy page thật sự đổi dù cây bảo không. Nó vừa
+		// ghi log record cho thay đổi đó, nên pool BẮT BUỘC phải coi page là
+		// bẩn — một page có log record mà pool tưởng sạch sẽ không bao giờ
+		// được ghi xuống, và bản trên đĩa sẽ cũ hơn cả log lẫn RAM.
+		dirty = true
+	}
 	if err := t.pool.Unpin(id, dirty); err != nil {
 		// Unpin chỉ hỏng khi bookkeeping của chính cây sai; im lặng ở đây sẽ
 		// biến một bug thành rò rỉ pin, và rò rỉ pin biểu hiện muộn hơn nhiều
@@ -287,18 +320,17 @@ func (t *Tree) insertAndSplit(path []crumb, lv int, i int, cell []byte) error {
 // như SQLite làm). Đơn giản hơn, đổi lại root phải được ghi vào meta page ở
 // Commit — nên Tree.Root() là thứ tầng trên bắt buộc phải lưu.
 func (t *Tree) growRoot(leftID pager.PageID, sep []byte, right pager.PageID) error {
-	f, err := t.pool.NewPage(page.TypeBranch)
+	id, n, err := t.newPage(page.TypeBranch)
 	if err != nil {
 		return err
 	}
-	n := node{p: f.Data}
 	n.setRightmost(right)
 	if err := n.p.InsertAt(0, encodeBranch(t.cellBuf[:0], leftID, sep)); err != nil {
-		t.pool.Unpin(f.PageID(), true)
+		t.unpin(id, true)
 		return err
 	}
-	t.root = f.PageID()
-	t.unpin(f.PageID(), true)
+	t.unpin(id, true)
+	t.setRoot(id)
 	t.st.RootSplits++
 	return nil
 }

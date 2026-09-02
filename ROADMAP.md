@@ -37,7 +37,7 @@ xem mục "Sau roadmap" ở cuối.
 | 2 | ✅ Slotted page: record biến độ dài, compact, tuple id | 1 buổi | 1.42 triệu lần fuzz, bất biến không vỡ lần nào, [diary/phase2.md](diary/phase2.md) |
 | 3 | ✅ Buffer pool: pin/unpin, dirty, CLOCK/LRU-K, latch | 1 buổi | Hit-ratio zipfian + sequential flooding, so cả với Belady, [diary/phase3.md](diary/phase3.md) |
 | 4 | ✅ B+Tree: search/insert/split/delete/merge, cursor | 4-6 ngày (thực tế 1) | Property test 7 bất biến + bench 1M khóa: ngẫu nhiên/tăng dần = 33x writes/op, [diary/phase4.md](diary/phase4.md) · [log](diary/phase4-log.md) |
-| 5 | **WAL + recovery**: ARIES-lite (analysis/redo/undo), checkpoint | 3-4 ngày | 200 lần `kill -9` ngẫu nhiên -> durability không sai lần nào |
+| 5 | ✅ **WAL + recovery**: ARIES-lite (analysis/redo/undo), checkpoint | 3-4 ngày (thực tế 2) | 200/200 lần `kill -9` ngẫu nhiên, 9194 txn đã commit được kiểm — **và** 10/10 báo SAI khi cố tình làm mất log ([diary/phase5.md](diary/phase5.md) · [log](diary/phase5-log.md)) |
 | 6 | Transaction & concurrency: 2PL, deadlock, MVCC snapshot isolation | 3-4 ngày | Tái tạo được từng anomaly, và chứng minh mức isolation cao chặn nó |
 | 7 | Secondary index, composite key, iterator, index scan vs seq scan | 2-3 ngày | Bench tìm điểm hòa vốn selectivity |
 | 8 | (tùy chọn) SQL front-end: parser -> planner -> executor, join | 2-3 ngày | Chạy được `SELECT ... JOIN ... WHERE` |
@@ -141,6 +141,23 @@ Nâng cao (để sau phase 7 nếu còn sức): **Blink-tree** hoặc latch-coup
 mọi txn đã báo commit đều còn, mọi txn chưa commit biến mất hoàn toàn. Lặp 200 lần với seed ngẫu nhiên.
 
 **Bench:** group commit (gộp fsync cho nhiều txn) -> throughput tăng 10-50x.
+
+### Đã làm — và ba chỗ khác với dự kiến
+
+- **Đạt:** `make crashlab-full` 200/200 vòng. `InsertBatch1` / `InsertBatch1000` = **261x**, gần
+  hết khoảng cách ấy là **một** cái fsync; `TestGroupCommit` 200 commit → **1** fsync. Vượt xa
+  khoảng 10-50x dự kiến, vì dự kiến đó tính cho nhiều writer, còn đây là gộp trong một writer.
+- **Thêm vào, không có trong kế hoạch:** `make crashlab-nowrite` — bài **phản chứng**, bắt buộc
+  đỏ. Hoá ra `crashlab -nosync` **không** chứng minh được bộ kiểm tra biết báo SAI: `kill -9`
+  không giết page cache nên tắt sạch fsync vẫn 20/20 đúng (đúng nợ P0-1). Một bài test chưa bao
+  giờ đỏ thì chưa phải bằng chứng.
+- **Khác dự kiến:** kế hoạch viết "checkpoint (fuzzy) để rút ngắn thời gian recovery". Checkpoint
+  mờ rút ngắn được **điểm bắt đầu** redo (1.67x) nhưng **không** rút ngắn được **độ dài** redo:
+  checkpoint dày hơn 16 lần cho cùng số record (13033 vs 13059), vì `redoLSN = min(recLSN)` bị
+  ghim bởi page bẩn cũ nhất. Thứ quyết định độ dài redo là **người dọn page** → nợ P5-1.
+- **Trả nợ phase trước:** P1-1 (page mồ côi), P1-2 (transaction thật), P2-3 (torn page — trả bằng
+  ảnh trọn page, **không** thêm checksum cho page), P4-4 (root vẫn di chuyển, nhưng mỗi lần đổi
+  được log). Nợ mới: P5-1 → P5-6.
 
 ## Phase 6 — Transaction & concurrency control (3-4 ngày)
 

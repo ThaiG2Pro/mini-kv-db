@@ -124,7 +124,7 @@ func (t *Tree) fixUnderfull(path []crumb, lv int) (bool, error) {
 			t.unpin(sibID, false) // anh em phải chết, không cần ghi
 			c.dirty = true
 		}
-		if err := t.pool.FreePage(rightID); err != nil {
+		if err := t.freePage(rightID); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -269,10 +269,10 @@ func (t *Tree) maybeShrinkRoot(path []crumb) error {
 	oldRoot := root.id
 	root.gone = true
 	t.unpin(oldRoot, false)
-	if err := t.pool.FreePage(oldRoot); err != nil {
+	if err := t.freePage(oldRoot); err != nil {
 		return err
 	}
-	t.root = child
+	t.setRoot(child)
 	t.st.Shrinks++
 	return nil
 }

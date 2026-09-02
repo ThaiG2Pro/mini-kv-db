@@ -134,12 +134,10 @@ func (t *Tree) split(c *crumb, i int, cell []byte) ([]byte, pager.PageID, error)
 		mid = len(cells) - 1
 	}
 
-	right, err := t.pool.NewPage(c.n.p.Type())
+	rid, rn, err := t.newPage(c.n.p.Type())
 	if err != nil {
 		return nil, 0, err
 	}
-	rid := right.PageID()
-	rn := node{p: right.Data}
 
 	var sep []byte
 	if c.n.isLeaf() {
@@ -148,12 +146,12 @@ func (t *Tree) split(c *crumb, i int, cell []byte) ([]byte, pager.PageID, error)
 		// lý do range scan chỉ cần đi ngang tầng lá.
 		nextID := c.n.next()
 		if err := fill(rn, page.TypeLeaf, cells[mid:]); err != nil {
-			t.pool.Unpin(rid, true)
+			t.unpin(rid, true)
 			return nil, 0, err
 		}
 		rn.setNext(nextID)
 		if err := fill(c.n, page.TypeLeaf, cells[:mid]); err != nil {
-			t.pool.Unpin(rid, true)
+			t.unpin(rid, true)
 			return nil, 0, err
 		}
 		c.n.setNext(rid)
@@ -166,12 +164,12 @@ func (t *Tree) split(c *crumb, i int, cell []byte) ([]byte, pager.PageID, error)
 		oldRight := c.n.rightmost()
 		promoted := cells[mid]
 		if err := fill(rn, page.TypeBranch, cells[mid+1:]); err != nil {
-			t.pool.Unpin(rid, true)
+			t.unpin(rid, true)
 			return nil, 0, err
 		}
 		rn.setRightmost(oldRight)
 		if err := fill(c.n, page.TypeBranch, cells[:mid]); err != nil {
-			t.pool.Unpin(rid, true)
+			t.unpin(rid, true)
 			return nil, 0, err
 		}
 		c.n.setRightmost(branchChild(promoted))

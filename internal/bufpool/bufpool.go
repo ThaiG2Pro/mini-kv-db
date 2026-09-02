@@ -72,6 +72,14 @@ type Pool struct {
 	// pool không tự sinh page mới được.
 	Alloc Allocator
 
+	// OnFlush được gọi NGAY SAU khi một page bẩn đã thật sự rời RAM. Phase 5
+	// dùng nó để gạch tên page khỏi dirty page table: DPT phải hẹp đúng bằng
+	// tập page có thay đổi chưa nằm trên đĩa, vì recovery bắt đầu redo từ
+	// recLSN nhỏ nhất trong bảng đó. Một page quên gạch chỉ làm recovery chậm;
+	// một page thiếu trong bảng làm recovery BỎ SÓT redo — nên hook nằm ở đây,
+	// trong writeFrame, chỗ duy nhất page rời RAM.
+	OnFlush func(id pager.PageID)
+
 	// Thống kê. Đọc bằng Stats(), đừng đọc trực tiếp (không có latch).
 	hits, misses   int64
 	evictions      int64
@@ -254,6 +262,9 @@ func (p *Pool) writeFrame(f *Frame) error {
 	}
 	p.writes++
 	f.dirty = false
+	if p.OnFlush != nil {
+		p.OnFlush(f.id)
+	}
 	return nil
 }
 

@@ -99,3 +99,32 @@ func (p *Pool) FreePage(id pager.PageID) error {
 	}
 	return p.Alloc.Free(id)
 }
+
+// Discard vứt một page khỏi pool mà KHÔNG ghi nó xuống và KHÔNG động tới
+// allocator. Khác FreePage ở chỗ nó không gọi Alloc.Free.
+//
+// Vì sao cần một hàm riêng cho việc này: khi một transaction bị hủy, những
+// page nó đã cấp trở thành mồ côi và được trả thẳng về freelist của pager
+// (pager.FreeNow). Nhưng chúng vẫn đang nằm trong pool, VẪN CÒN CỜ BẨN — vì
+// pool.NewPage đánh dấu bẩn ngay từ lúc cấp. Chuỗi hậu quả đã đo được bằng
+// crashlab: checkpoint sau đó cấp lại đúng page ấy làm page CHỨA freelist và
+// ghi chuỗi freelist vào; ít lâu sau pool đuổi cái frame bẩn cũ ra và ghi đè
+// nội dung leaf cũ lên chuỗi freelist; lần mở file kế tiếp báo "đọc freelist
+// page 4096: EOF". Trả page về allocator mà quên dọn nó khỏi pool là để lại
+// một quả bom hẹn giờ trỏ vào đúng page đó.
+func (p *Pool) Discard(id pager.PageID) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	i, ok := p.table[id]
+	if !ok {
+		return nil
+	}
+	f := &p.frames[i]
+	if f.pin > 0 {
+		return fmt.Errorf("%w: Discard page %d đang pin=%d", ErrNotPinned, id, f.pin)
+	}
+	delete(p.table, id)
+	f.valid, f.dirty = false, false
+	p.repl.Pin(i) // rút khỏi hàng đợi nạn nhân; victim() nhặt nó vì !valid
+	return nil
+}
