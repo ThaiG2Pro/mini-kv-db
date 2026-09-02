@@ -1,4 +1,4 @@
-.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree crashlab crashlab-full crashlab-nosync crashlab-nowrite wallab bench-wal fuzz-db check clean
+.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree crashlab crashlab-full crashlab-nosync crashlab-nowrite wallab bench-wal fuzz-db fuzz-txn txnlab txnlab-anomaly txnlab-contention bench-txn test-txn check clean
 
 all: fmt vet test
 
@@ -110,6 +110,51 @@ bench-wal:
 
 fuzz-db:
 	go test ./internal/db/ -run '^$$' -fuzz FuzzCrashRecover -fuzztime 120s -fuzzminimizetime 1s
+
+# ---------- Phase 6: transaction & concurrency control ----------
+
+# Deliverable của phase 6, ba bảng:
+#   1. anomaly nào xảy ra ở mức isolation nào — kể cả write skew ở snapshot
+#      isolation, cái mà MVCC không bao giờ chặn được
+#   2. N goroutine chuyển tiền: tổng số dư VỠ ở hai mức thấp, giữ được ở hai
+#      mức cao
+#   3. MVCC phình bao nhiêu khi có một reader mở lâu, và vacuum thu lại được gì
+txnlab:
+	go run ./cmd/txnlab
+
+txnlab-anomaly:
+	go run ./cmd/txnlab -work anomaly
+
+# Tranh chấp cực cao (2 tài khoản, 12 goroutine): chỗ điều khiển đồng thời LẠC
+# QUAN (snapshot isolation) thoái hoá và BI QUAN (S2PL) thắng. "MVCC luôn nhanh
+# hơn lock" là một câu sai, và đây là lệnh chứng minh điều đó.
+txnlab-contention:
+	go run ./cmd/txnlab -work transfer -accounts 2 -workers 12 -ops 100
+
+# Giá của mỗi mức isolation, giá của abort, và giá của phình version trên
+# đường đọc. -benchtime lớn cho Get vì nó ~200ns: ở số vòng nhỏ thì đo ra
+# chi phí nạp page, không phải chi phí của mức isolation (bài học phase 5).
+bench-txn:
+	go test ./internal/txn/ -run '^$$' -bench 'Get|Scan' -benchtime=200000x -count=3
+	go test ./internal/txn/ -run '^$$' -bench 'Commit|Abort' -benchtime=500x
+	go test ./internal/lock/ -run '^$$' -bench . -benchmem
+
+# Bài test đối chứng của phase 6: bảng anomaly phải đỏ theo CẢ HAI chiều. Mỗi ô
+# đều khẳng định mức thấp ĐỂ LỌT chứ không chỉ khẳng định mức cao chặn — một
+# bài test chưa bao giờ đỏ thì chưa phải bằng chứng (bài học crashlab-nowrite).
+test-txn:
+	go test ./internal/txn/ ./internal/lock/ -count=1 -race -v -run 'Anomaly|Transfer|Deadlock'
+
+# Fuzz phase 6, hai target:
+#   FuzzChainCodec — encoding của chuỗi version phải CANONICAL và phải từ chối
+#     byte rác. Target này đỏ ngay ở giây thứ 3 lần đầu chạy: bit cờ lạ bị nuốt
+#     im lặng, và Encode sinh ra được tombstone có thân mà Decode từ chối. Nó
+#     cũng kiểm bất biến định nghĩa của Prune trên mọi (horizon, snapshot).
+#   FuzzTxnCrash   — chuỗi version đi qua WAL/redo/undo của phase 5 mà không
+#     tầng nào biết nó là gì; sau crash không được có chuỗi nào giải mã ra rác.
+fuzz-txn:
+	go test ./internal/txn/ -run '^$$' -fuzz FuzzChainCodec -fuzztime 120s -fuzzminimizetime 1s
+	go test ./internal/txn/ -run '^$$' -fuzz FuzzTxnCrash -fuzztime 120s -fuzzminimizetime 1s
 
 # fsck: soi file database, thoát 1 nếu có lỗi nghiêm trọng
 check:

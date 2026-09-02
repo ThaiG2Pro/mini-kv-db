@@ -63,19 +63,6 @@ DIR=/mnt/nvme/iolab REPEAT=5 ./scripts/linux-baseline.sh
 **Câu hỏi quyết định:** *tỉ số nào sống sót qua hai máy?* Cái sống sót là quy luật vật lý và đáng
 để thiết kế dựa vào; cái đổi chỉ là đặc tính của một cái máy.
 
-### ⏳ P1-2b · Chưa có cô lập cho reader đồng thời
-
-Phần còn lại của P1-2 sau phase 5. Đã có `Begin`/`Commit`/`Abort` và **một writer do code bắt
-buộc** (`ErrWriterBusy`), nhưng reader vẫn đọc trực tiếp trên page hiện hành: không có snapshot,
-không có version. Một reader đang duyệt cây trong khi writer split page là hành vi chưa định nghĩa.
-
-```bash
-go test ./internal/db -run TestSingleWriter -count=1   # cái ĐÃ có
-```
-
-**Cách trả:** MVCC ở phase 6 — snapshot theo LSN, version chain trong page hoặc undo log làm
-nguồn đọc bản cũ. Lúc đó `undoChain` của phase 5 thành nguyên liệu sẵn có.
-
 ### ⏳ P1-3 · Chính sách cấp phát (đã đo, giả thuyết ban đầu SAI)
 
 Xem bảng đo trong [`../diary/phase1.md`](../diary/phase1.md): LIFO và lowest-first cho ra
@@ -381,6 +368,114 @@ go test ./internal/db/ -run '^$' -bench 'Recover' -benchtime=3x
 **Kỳ vọng cần viết ra trước khi đo:** thời gian Analysis tuyến tính theo độ dài log; bộ nhớ tuyến
 tính theo **số page bị chạm** chứ không theo độ dài log. Lệch khỏi cái thứ hai là có rò.
 
+### 🔧 P6-1 · Chuỗi version nằm TẠI CHỖ: trần cứng ~2KB một khóa
+
+Cả chuỗi version của một khóa phải nhét vừa **một** entry B+Tree (`btree.MaxEntrySize` = 2028).
+Với value 40 byte thì chạm trần ở lần ghi lại thứ **41**; `MaxVersions = 64` không bao giờ tới.
+Và nếu có một reader cũ ghim `horizon` thì writer chết ở lần thứ **63**.
+
+```bash
+go test ./internal/txn/ -run 'TestChainFullIsReported|TestOldReaderStarvesWriterOnSameKey' -count=1 -v
+```
+
+Đây là **giới hạn cứng của MVCC-tại-chỗ**, và là lý do thật sự vì sao DB thật không để bản cũ tại
+chỗ: Postgres tạo tuple mới ở **page khác**, InnoDB đẩy bản cũ sang **undo segment**. Bản này chọn
+tại chỗ vì nó làm luật visibility hiện ra rõ nhất.
+
+**Cách trả:** đẩy bản cũ ra khỏi entry — hoặc overflow page (nợ P4-1, cùng một cơ chế), hoặc một
+undo segment riêng. Cả hai đều đổi trần cứng thành một lần truy đĩa thêm cho reader bản cũ.
+**Kỳ vọng cần viết ra trước khi đo:** `BenchmarkGetChainDepth/oldest` sẽ đắt hơn `newest` rõ rệt
+sau khi trả — hiện tại chúng bằng nhau (0.98x), xem P6-2.
+
+### 🔧 P6-2 · `DecodeChain` giải mã trọn chuỗi dù chỉ cần một version
+
+```bash
+go test ./internal/txn/ -run '^$' -bench 'GetChainDepth' -benchtime=200000x -count=3
+```
+
+Đã đo: ở depth=60, nhánh `oldest` / `newest` = 1480/1450 = **0.98x**. Nếu chi phí nằm ở vòng lặp
+visibility thì đọc bản **cũ nhất** phải đắt hơn đọc bản **mới nhất** rõ rệt. Nó không ⇒ chi phí
+nằm ở `DecodeChain`, nó giải mã **cả chuỗi** trước khi ai đó hỏi cần version nào.
+
+**Cách trả:** giải mã **lười** — đi con trỏ qua header từng version, chỉ dựng `Version` cho bản
+thật sự được trả về. Header cố định 11 byte nên bước nhảy là O(1).
+**Kỳ vọng:** `newest` ở depth=60 tiến gần về `newest` ở depth=1 (~171ns); `oldest` giữ nguyên.
+Nếu **cả hai** đều giảm thì bench đang đo cái khác — nghi bench trước.
+
+### 🔧 P6-3 · Lock manager không có chỉ mục theo đối tượng
+
+```bash
+go test ./internal/lock/ -run '^$' -bench 'AcquireDisjoint' -benchmem
+```
+
+Đã đo: 256 holder **không chồng nhau** = 3762 ns vs 1 holder = 168.7 ns ⇒ **22.3x**, mà **không
+có tranh chấp nào** — chỉ có việc đi hết danh sách để biết là không tranh chấp. `Res.Overlaps`
+bản thân nó là 13.34 ns / **0 alloc**, nên vấn đề là O(n), không phải hằng số.
+
+**Cách trả:** băm khóa điểm vào một map; giữ danh sách tuyến tính **chỉ** cho khoá span (span thì
+không băm được). Khi đó đường phổ biến (khóa điểm) thành O(1).
+**Kỳ vọng:** `AcquireDisjoint/holders=256` về gần `holders=1`; `AcquireShared/holders=256` **không
+đổi** (chúng chồng nhau thật, phải xét thật).
+
+### ⏳ P6-4 · `Txn.Scan` materialize cả kết quả thay vì stream
+
+`Txn.Scan` gom hết cặp khóa/giá trị nhìn thấy được vào RAM rồi mới gọi `fn`. Lý do lịch sử: nó
+gọi `db.DB.Range`, mà `Range` giữ `d.mu` **suốt** lần duyệt (xem chú thích tại chỗ), nên không
+được gọi lại vào tầng txn từ trong callback.
+
+```bash
+go test ./internal/txn/ -run '^$' -bench 'Scan' -benchtime=200000x -count=3   # 700µs / 2000 khóa
+```
+
+**Cách trả:** cần **latch-coupling (P4-5)** trước. Chừng nào cursor còn thả pin giữa hai bước
+`Next()` thì stream qua một writer đồng thời là hành vi chưa định nghĩa. Đây là một chỗ **đo được
+cái giá của việc chưa có P4-5**.
+
+### 🔧 P6-5 · Không có vacuum nền
+
+`Vacuum()` chỉ chạy khi có ai gọi. Bộ dọn opportunistic trong `Txn.apply` gần như miễn phí nhưng
+chỉ chạm những khóa **đang được ghi** — một khóa ghi 20 lần rồi không ai chạm nữa sẽ giữ 20
+version mãi mãi.
+
+```bash
+go run ./cmd/txnlab -work bloat    # tỉ số phình = 18.07x
+```
+
+Cùng họ với **P5-1** (không có background page cleaner): cả hai đều là "có cơ chế dọn, không có
+người dọn". Trả chung được: một goroutine nền, một ngân sách I/O, và một cách đo được là nó
+không đói cũng không ngốn.
+
+### 📏 P6-6 · Phase 6 chưa đi qua `kill -9` thật
+
+`FuzzTxnCrash` crash bằng `db.SimulateCrash()` **trong tiến trình**. Phase 5 đã học được rằng
+`kill -9` **không** đủ để lộ việc thiếu fsync (page cache của kernel sống lâu hơn tiến trình —
+nợ P0-1), nên `SimulateCrash` không phải một lựa chọn tồi. Nhưng nó cũng không phải cùng một bài
+kiểm tra.
+
+```bash
+# trả bằng: thêm chế độ -txn vào cmd/crashlab (workload đi qua txn.Store), rồi
+go run ./cmd/crashlab -txn -n 200
+```
+
+**Kỳ vọng:** `BadChains == 0` sau cả 200 vòng, và số version sau recovery bằng đúng số version
+của các transaction đã commit. Lệch ⇒ có chuỗi bị áp **một nửa**, tức `apply` không thật sự
+nguyên tử như thiết kế nói.
+
+### ⏳ P6-7 · `Serializable` cài bằng S2PL, không phải SSI
+
+Mức `Serializable` chặn write skew bằng cách giữ khóa S trên cái đã đọc, nên nó chặn bằng
+**deadlock** (`Deadlocks != 0` ở `TestSerializableBlocksWriteSkewByDeadlock`). SSI thì theo dõi
+phụ thuộc đọc-ghi và chỉ abort khi thấy một **hình** nguy hiểm, không phải khi thấy một xung đột
+thật — rẻ hơn nhiều, và không cần `GetForUpdate`.
+
+```bash
+go run ./cmd/txnlab -work transfer -accounts 2 -workers 12 -ops 100
+```
+
+**Câu hỏi quyết định khi trả:** SSI có xoá được **cả hai** cột yếu của bảng hiện tại không — vừa
+tránh việc OCC bỏ lượt (26/1200 ở tranh chấp cao), vừa tránh việc S2PL bắt ứng dụng khai
+`GetForUpdate`? Nếu không thì nó chỉ là một điểm khác trên cùng đường đánh đổi.
+
 ---
 
 ## Đã trả
@@ -394,6 +489,7 @@ tính theo **số page bị chạm** chứ không theo độ dài log. Lệch kh
 | 🔧 P2-0 · `Compact` dùng insertion sort, giả định offset đã gần sắp xếp | `slices.SortFunc` trên mảng nằm trên stack | `TestCompactOrderIsScrambled` dựng được thế 299/300 nghịch thế; `BenchmarkCompactScrambled` 229810 → 9169 ns/op = **25x**, 0 alloc |
 | 🔧 P2-0b · `Verify` cấp phát 20KB mỗi lần gọi, bóp nghẹt fuzz | bitmap 512 byte trên stack; giữ bản cũ làm `verifyRef` để kiểm tra chéo | `BenchmarkVerifyRefFullPage` 19768 ns / 20576 B vs `BenchmarkVerifyFullPage` 3583 ns / **0 B**; fuzz đi từ 63k lên **1 421 899** exec |
 | 🔧 P1-1 · Page mồ côi sau rollback | `bufpool.Discard(id)` trước `pg.FreeNow(id)` trong cả `Txn.Abort` lẫn `recover()` | `TestAbortLeavesNoOrphanPage` — và nó **tố oan một lần**: "abort nới 50 page nhưng chỉ trả 49" hoá ra là page chứa freelist, phép đếm sai chứ không phải code. `dbcheck` im lặng sau 120 txn có abort |
+| ⏳ P1-2b · Chưa có cô lập cho reader đồng thời | MVCC snapshot isolation trong `internal/txn` — **đúng cách mà mục này đã dự đoán từ phase 5**. Chuỗi version trong value của B+Tree, mới-nhất-trước; **không** có `xmax` (trùng lặp với `xmin` bản kế) và **không** có clog (version chỉ vào cây khi đã commit) | `TestSnapshotReadDoesNotBlockWriter`. Và nó **tố oan một lần**: bản đầu đỏ ở *"writer thứ 63: chuỗi version đã đầy"* — reader **không lấy khóa** của writer (đúng) nhưng reader cũ **ghim horizon** nên writer trên cùng một khóa vẫn chết. Tách thành hai bài nói hai vế + `TestOldReaderStarvesWriterOnSameKey`. Phình đo được **18.07x** (`txnlab -work bloat`) |
 | ⏳ P1-2 · Chưa có transaction thật | `Begin`/`Commit`/`Abort` trong `internal/db`; một writer **do code bắt buộc** | `TestSingleWriter` → `ErrWriterBusy`. Phần reader đồng thời tách thành **P1-2b** |
 | ⏳ P2-3 · Page không có checksum riêng | **Chọn không** thêm checksum cho page: crc32c mỗi record log + **ảnh trọn page** ở lần chạm đầu sau mỗi checkpoint (`full_page_writes` của Postgres), redo áp vô điều kiện | `TestFullPageWriteAppearsOncePerCheckpoint`. Lý do phải thế: page bị torn thì `pageLSN` là **rác**, nên chốt `pageLSN >= rec.LSN` sẽ bỏ qua đúng cái page đang hỏng. Giá: payload 4244 vs 284 byte (`BenchmarkEncodeFullPage`) |
 | ⏳ P4-4 · Root đổi `PageID` mỗi lần cây cao thêm | **Quyết định: giữ cho root di chuyển.** Mỗi lần đổi sinh một record ROOT được log; meta chỉ giữ root ở lần checkpoint cuối | `make wallab`: `ROOT  9 record  504 byte  56 byte/record`. Không cố định root vào một page id, vì như thế phải **copy nội dung** mỗi lần cây cao thêm — mà việc copy ấy lại phải log trọn page, đắt hơn 56 byte |

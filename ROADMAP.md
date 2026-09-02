@@ -38,7 +38,7 @@ xem mục "Sau roadmap" ở cuối.
 | 3 | ✅ Buffer pool: pin/unpin, dirty, CLOCK/LRU-K, latch | 1 buổi | Hit-ratio zipfian + sequential flooding, so cả với Belady, [diary/phase3.md](diary/phase3.md) |
 | 4 | ✅ B+Tree: search/insert/split/delete/merge, cursor | 4-6 ngày (thực tế 1) | Property test 7 bất biến + bench 1M khóa: ngẫu nhiên/tăng dần = 33x writes/op, [diary/phase4.md](diary/phase4.md) · [log](diary/phase4-log.md) |
 | 5 | ✅ **WAL + recovery**: ARIES-lite (analysis/redo/undo), checkpoint | 3-4 ngày (thực tế 2) | 200/200 lần `kill -9` ngẫu nhiên, 9194 txn đã commit được kiểm — **và** 10/10 báo SAI khi cố tình làm mất log ([diary/phase5.md](diary/phase5.md) · [log](diary/phase5-log.md)) |
-| 6 | Transaction & concurrency: 2PL, deadlock, MVCC snapshot isolation | 3-4 ngày | Tái tạo được từng anomaly, và chứng minh mức isolation cao chặn nó |
+| 6 | ✅ **Transaction & concurrency**: MVCC snapshot isolation + S2PL, 4 mức isolation, deadlock detection | 3-4 ngày (thực tế 1) | Bảng 5 anomaly × 4 mức khớp lý thuyết từng ô, khẳng định theo **cả hai chiều**; chuyển tiền vỡ ở mức thấp, giữ ở mức cao; và **chỗ MVCC thua lock** ([diary/phase6.md](diary/phase6.md) · [log](diary/phase6-log.md)) |
 | 7 | Secondary index, composite key, iterator, index scan vs seq scan | 2-3 ngày | Bench tìm điểm hòa vốn selectivity |
 | 8 | (tùy chọn) SQL front-end: parser -> planner -> executor, join | 2-3 ngày | Chạy được `SELECT ... JOIN ... WHERE` |
 
@@ -172,6 +172,44 @@ mọi txn đã báo commit đều còn, mọi txn chưa commit biến mất hoà
 
 **Test:** N goroutine chạy đồng thời bài toán chuyển tiền, verify invariant "tổng số dư không đổi"
 ở mỗi mức isolation; đồng thời chứng minh mức thấp hơn **phá** invariant đó.
+
+### Đã làm — và bốn chỗ khác với dự kiến
+
+- **Đạt:** bảng 5 anomaly × 4 mức khớp lý thuyết từng ô (`make txnlab-anomaly`), và mỗi ô được
+  khẳng định theo **cả hai chiều** — mức thấp phải **để lọt**, mức cao phải chặn (`make test-txn`).
+  Chuyển tiền: hai mức thấp làm lệch tổng số dư, hai mức cao giữ đúng 80000. 240 test, race-clean.
+
+- **Khác dự kiến #1 — thứ tự đi ngược.** Kế hoạch viết *"bắt đầu bằng S2PL, **rồi** cài MVCC"*.
+  Thực tế MVCC phải đi **trước**, vì nó quyết định hình dạng dữ liệu **trên đĩa**; S2PL viết sau
+  như một module độc lập (`internal/lock`) chỉ phục vụ mức `Serializable`. Hai thứ không xếp tầng
+  lên nhau — chúng là hai lựa chọn **song song** cho cùng một câu hỏi.
+
+- **Khác dự kiến #2 — bỏ `xmax`, bỏ luôn clog.** Kế hoạch viết tuple mang `(xmin, xmax)`. Nhưng
+  khi chuỗi version xếp **mới-nhất-trước** thì `xmax` của bản *i* **luôn** bằng `xmin` của bản
+  *i-1*: dữ liệu trùng lặp. Và clog không cần, vì write set chỉ vào cây **khi đã commit** ⇒ "có
+  mặt trong cây" đã có nghĩa là "đã commit". Cùng lý lẽ đã dùng ở phase 5 khi xoá cờ
+  `FlagHasBefore`: *hai nguồn sự thật cho cùng một sự việc là hai chỗ để lệch nhau.*
+
+- **Khác dự kiến #3 — không cần nhiều writer vật lý, nên không cần P4-5.** Kiến trúc **deferred
+  write**: write set trong RAM, áp tất cả trong **một** transaction vật lý của phase 5 lúc commit.
+  Nhờ vậy WAL/checkpoint/recovery/undo của phase 5 **không đổi một dòng**, và latch-coupling
+  (P4-5) vẫn để cho phase 7. Đường kia — nhiều writer cùng sửa cây — buộc phải **bỏ pha undo
+  physical**: A và B cùng sửa một page, A abort, dán ảnh-trước của A là **xoá luôn việc của B**.
+  Đó chính là lý do Postgres không có pha undo.
+
+- **Khác dự kiến #4 — `read-uncommitted` là mức KHÓ CÀI NHẤT.** Ngược hoàn toàn với trực giác.
+  Write set là RAM riêng tới lúc commit, nên dirty read là việc **bất khả**; phải viết
+  `Store.peekDirty` **thêm vào** chỉ để tái tạo nó. Bài học tổng quát: anomaly nào xảy ra là **hệ
+  quả của kiến trúc**, không phải của một cái công tắc.
+
+- **Thêm vào, không có trong kế hoạch:** `make txnlab-contention` — 2 tài khoản × 12 goroutine.
+  Ở đó `repeatable-read` (lạc quan) **bỏ 26/1200** lượt với 2670 lần thử lại, còn `serializable`
+  (bi quan) commit **1200/1200** với 122 deadlock. **"MVCC luôn nhanh hơn locking" là một câu
+  sai**, và đây là lệnh chứng minh nó sai. Cùng với `make fuzz-txn`, mà target đầu tìm ra bug
+  trong **3 giây**: encoding chuỗi version không canonical.
+
+- **Trả nợ phase trước:** **P1-2b** (cô lập cho reader đồng thời) — đúng bằng cách mà
+  `docs/debts.md` đã dự đoán từ phase 5. Nợ mới: **P6-1 → P6-7**. **Không** trả và cố ý: P4-5.
 
 ## Phase 7 — Index nâng cao + query cơ bản (2-3 ngày)
 

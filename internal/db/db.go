@@ -364,6 +364,21 @@ func (d *DB) Has(key []byte) (bool, error) {
 	return d.tree.Has(key)
 }
 
+// Range gọi fn cho mọi khóa trong [lo, hi) theo thứ tự tăng dần. hi == nil
+// nghĩa là tới hết.
+//
+// Toàn bộ lần duyệt nằm trong MỘT lần giữ d.mu. Đó là một quyết định, không
+// phải sơ suất: cursor của phase 4 thả pin giữa hai bước Next(), nên nếu một
+// writer chen vào giữa và split đúng cái leaf ta đang đứng, cursor sẽ nhảy
+// theo sibling pointer sang một page đã đổi nội dung. Giữ latch cả lần duyệt
+// là cách rẻ nhất để range scan có nghĩa, và cũng là chỗ đo được cái giá của
+// việc CHƯA có latch-coupling (nợ P4-5): một scan dài chặn mọi writer.
+func (d *DB) Range(lo, hi []byte, fn func(key, val []byte) bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.tree.Range(lo, hi, fn)
+}
+
 // Update chạy fn trong một transaction, tự commit hoặc tự abort.
 func (d *DB) Update(fn func(tx *Txn) error) error {
 	tx, err := d.Begin()

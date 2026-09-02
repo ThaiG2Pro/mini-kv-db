@@ -19,6 +19,7 @@ cmd/bufferlab/  phase 3 — hit ratio lru/clock/lru-2 vs Belady, sequential floo
 cmd/btreelab/   phase 4 — hình dạng cây theo thứ tự chèn, fanout, split, xóa và trả page
 cmd/crashlab/   phase 5 — 200 lần kill -9 ngẫu nhiên rồi kiểm durability; -nowrite = bài phản chứng
 cmd/wallab/     phase 5 — soi một file WAL: gồm record gì, bao nhiêu phần trăm là thuế
+cmd/txnlab/     phase 6 — ba bảng: anomaly × mức isolation, chuyển tiền N goroutine, phình version
 cmd/dbcheck/    fsck cho file minidb — meta, freelist, double free, page mồ côi
 scripts/        linux-baseline.sh (đo baseline có thể so máy), dm-flakey.sh (bơm lỗi thiết bị)
 docs/           debts.md (sổ nợ + lệnh trả từng món), linux-baseline.md (đo trên Linux thuần)
@@ -29,6 +30,8 @@ internal/bufpool/ phase 3 — buffer pool: pin/unpin, dirty, LRU/CLOCK/LRU-K, WA
 internal/btree/ phase 4 — B+Tree: node = 1 page, split, merge/redistribute, cursor
 internal/wal/   phase 5 — log record + crc32c, diff theo khối, LSN = offset byte, group commit
 internal/db/    phase 5 — transaction (Begin/Commit/Abort), checkpoint mờ, recovery 3 pha ARIES
+internal/lock/  phase 6 — lock manager S2PL: S/X, khóa điểm và khoảng, deadlock qua wait-for graph
+internal/txn/   phase 6 — MVCC: chuỗi version, snapshot, 4 mức isolation, vacuum, deferred write
 diary/          nhật ký học: giả thuyết sai, số đo, invariant
 skills/         quy ước làm việc trong repo (đọc trước khi ghi diary)
 ```
@@ -52,6 +55,12 @@ make crashlab-nowrite               # phase 5: PHẢI ĐỎ — chứng minh bà
 make wallab                         # phase 5: một file WAL thật gồm những gì
 make bench-wal                      # phase 5: giá của durability, recovery, diff, đường đọc
 make fuzz-db                        # phase 5: fuzz chuỗi thao tác + crash + mở lại
+make txnlab                         # phase 6: anomaly × mức isolation, chuyển tiền, phình version
+make txnlab-anomaly                 # phase 6: chỉ bảng anomaly (thoát 1 nếu lệch khỏi lý thuyết)
+make txnlab-contention              # phase 6: chỗ MVCC (lạc quan) THUA lock (bi quan)
+make test-txn                       # phase 6: bảng anomaly khẳng định theo CẢ HAI chiều
+make bench-txn                      # phase 6: giá mỗi mức isolation, giá abort, giá phình version
+make fuzz-txn                       # phase 6: codec chuỗi version phải canonical + sống qua crash
 make fuzz-btree                     # phase 4: fuzz chuỗi Put/Delete, đối chiếu map + Verify()
 make test                           # toàn bộ test (40 điểm crash của pager + bất biến của page)
 make check                          # fsck file data/test.db
