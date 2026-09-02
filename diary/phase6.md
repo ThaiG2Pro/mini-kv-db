@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 3-4 ngày · **thực tế:** 1 ngày
 - **Bắt đầu:** 2026-09-02 · **Kết thúc:** 2026-09-02
 - **Trạng thái:** ✅ xong
-- **Commit:** `_(điền sau khi commit)_`
+- **Commit:** `4dedc4f`
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Sáu tháng sau đọc lại phải chạy lại được.
@@ -67,7 +67,7 @@ Bốn bài, và bài (2) và (4) mới làm bài (1) có nghĩa:
 ## Reproduce toàn bộ phase này
 
 ```bash
-git checkout <commit của phase 6>
+git checkout 4dedc4f
 make fmt vet
 make test                 # 240 test
 go test -race ./internal/... -count=1

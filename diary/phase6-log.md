@@ -22,7 +22,7 @@ Chia thế có chủ ý: **không cho phép vừa viết vừa chạy**, để p
 cho hết đỏ".
 
 Máy: WSL2 / i5-1235U / 6 core / ext4 / go1.26.2. Ngày 2026-09-02.
-Commit gốc: `e97dddf` (phase 5 = `6ac4450`). Commit của phase: `_(điền sau)_`.
+Commit gốc: `e97dddf` (phase 5 = `6ac4450`). Commit của phase: `4dedc4f`.
 
 ---
 
