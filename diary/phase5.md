@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 3-4 ngày · **thực tế:** 2 ngày
 - **Bắt đầu:** 2026-09-01 · **Kết thúc:** 2026-09-02
 - **Trạng thái:** ✅ xong
-- **Commit:** `_(điền sau khi commit)_`
+- **Commit:** `6ac4450`
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Sáu tháng sau đọc lại phải chạy lại được.
@@ -56,7 +56,7 @@ Hai bài, và **bài thứ hai mới làm bài thứ nhất có nghĩa**:
 ## Reproduce toàn bộ phase này
 
 ```bash
-git checkout <commit ở đầu file>
+git checkout 6ac4450
 make test                 # 167 test, gồm 12 test của internal/db và 7 của internal/wal
 make vet fmt
 
@@ -651,7 +651,7 @@ $ go test ./internal/db -run TestLogGrowth -v   # test tạm, đã xoá
 
 ## Số đo
 
-**Lệnh:** `make bench-wal` · **Ngày:** 2026-09-02 · **Commit:** _(điền sau khi commit)_ ·
+**Lệnh:** `make bench-wal` · **Ngày:** 2026-09-02 · **Commit:** `6ac4450` ·
 **Máy:** WSL2 / ext4 trên file ảnh đĩa / i5-1235U / GOMAXPROCS=6.
 
 ### Giá của durability và hình dạng của group commit
