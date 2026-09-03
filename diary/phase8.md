@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** 1 ngày (3 lượt)
 - **Bắt đầu:** 2026-09-03 · **Kết thúc:** 2026-09-03
 - **Trạng thái:** ✅ xong
-- **Commit:** `_(điền sau khi commit)_`
+- **Commit:** `4b498c9`
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Sáu tháng sau đọc lại phải chạy lại được.
