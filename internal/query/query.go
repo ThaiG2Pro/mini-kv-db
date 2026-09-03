@@ -150,6 +150,26 @@ type CostModel struct {
 // hạ xuống khi chạy trên SSD, và đây là bảng số giải thích vì sao.
 var DefaultCost = CostModel{CSeq: 1, CIndex: 0.6, CFetch: 20}
 
+// MeasuredCost là mô hình ĐÃ ĐO, và nó tồn tại vì phase 8 cần một planner
+// dùng được trong khi DefaultCost phải giữ nguyên cái sai của nó.
+//
+// Số lấy từ diary/phase7.md (make idxlab, máy i5-1235U, WSL2):
+//
+//	một bước seq scan       413-544 ns   -> CSeq   = 1
+//	một bước quét index     241-295 ns   -> CIndex = 0.6
+//	một lần tra bảng theo pk 988-1308 ns -> CFetch = 2.4
+//
+// CFetch ở đây là ca TƯƠNG QUAN: index scan tra bảng theo thứ tự index, và khi
+// thứ tự ấy gần thứ tự pk thì mỗi lần tra rơi vào trang vừa đọc. Đo cùng phép
+// ấy theo khóa nhảy lung tung thì ra 2142-2327 ns, tức 1.6-2.2x đắt hơn — và
+// CẢ HAI đều đúng, cho hai index tương quan khác nhau. Postgres lưu chuyện này
+// thành thống kê `correlation` của từng cột rồi nội suy chi phí giữa hai đầu;
+// ở đây chọn đầu tương quan, và đó là một GIẢ THUYẾT nhìn thấy được chứ không
+// phải một hằng số trốn trong code.
+//
+// Điểm hoà vốn của mô hình này: 1/(0.6+2.4) = 33.3%, so với 36.8% đo được.
+var MeasuredCost = CostModel{CSeq: 1, CIndex: 0.6, CFetch: 2.4}
+
 // Selectivity ước lượng phần hàng thoả điều kiện, theo phân bố đều.
 func (s Stats) Selectivity(col int, lo, hi keys.Value) float64 {
 	cs, ok := s.Cols[col]

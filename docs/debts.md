@@ -627,13 +627,114 @@ go run ./cmd/txnlab -work transfer -accounts 2 -workers 12 -ops 100
 lại sức phát hiện của từng mức isolation. Kỳ vọng: mức thấp vỡ ở **mọi** lần chạy thay vì 1/6, và
 lúc đó `maxTries` ở `TestTransferInvariantPerLevel` bỏ được.
 
-### ⏳ P7-9 · Chưa có `ORDER BY` dùng index, chưa có `Filter` đẩy xuống
+## Nợ của phase 8
 
-Index scan đã trả về **theo thứ tự index** (`TestIndexScanOrderFollowsIndexNotPK` khẳng định điều
-đó) nhưng planner chưa biết dùng tính chất ấy để **bỏ** hẳn bước sắp xếp. Và `Query` chưa có
-predicate nào ngoài khoảng trên cột dẫn đầu.
+### ⏳ P8-1 · Không có `BEGIN`/`COMMIT` — mỗi câu là một transaction riêng
 
-Để phase 8, cùng với parser — vì hình dạng của `Filter`/`Project` phụ thuộc vào hình dạng AST.
+**Món nợ lớn nhất của phase 8**, và nó đau vì cái thiếu không phải cơ chế mà chỉ là **mặt ngoài**:
+phase 6 đã có 4 mức isolation, khóa điểm và khoảng, phát hiện deadlock qua wait-for graph — nhưng
+**không viết được** một transaction nhiều câu **bằng SQL**. Cả `internal/txn` chỉ dùng được từ Go.
+
+**Cách trả:** một mô hình **phiên** (session) giữ `*txn.Txn` giữa hai lần gọi, cộng ba câu lệnh
+(`BEGIN [ISOLATION LEVEL ...]`, `COMMIT`, `ROLLBACK`). Có vậy mới viết được bằng SQL bài chuyển
+tiền của `cmd/txnlab` — và đó mới là bằng chứng đã trả.
+
+### ⏳ P8-2 · Không có `UPDATE`/`DELETE`
+
+`internal/txn` có đủ (`Put`/`Del` + chuỗi version); chỗ thiếu là parser và một toán tử **ghi**.
+Chưa làm vì `DELETE` còn phải cập nhật **mọi** index phụ, nên bất biến hàng↔index của phase 7
+phải được khẳng định lại ở đường đi mới — tức `fuzz-table` phải sinh cả `DELETE`, không chỉ `Put`.
+
+### ⏳ P8-3 · Không có `NOT`, không có `IS NULL`
+
+**Không phải "chưa làm" mà là "đã làm phần khó, thiếu phần dễ"** — và đó là lý do không ai phát
+hiện ra: phần khó có test. Logic **ba giá trị** đã cài đúng ở `internal/plan/bind.go`
+(`CmpExpr.Eval`, `LogicExpr.Eval`, bảng chân lý trong `TestThreeValuedTruthTable`), và `NOT`
+**đã là** một token trong `internal/sql/token.go` — nhưng parser không có phép một toán tử, nên
+**không gõ ra được từ SQL**.
+
+```console
+$ go run ./cmd/minidb -e "SELECT id FROM ev WHERE NOT (kind < 5);"
+cú pháp: cần một giá trị hoặc tên cột, gặp "NOT"
+```
+
+`IS NULL` nặng hơn: nó là cách **duy nhất** tìm hàng có NULL, và hiện **không có cách nào** — vì
+`WHERE x = NULL` cho 0 hàng (đúng theo chuẩn), còn `x < v` và `x >= v` thì **cùng** loại hàng NULL ra.
+
+### ⏳ P8-4 · Chỉ join **hai** bảng, và chỉ **inner** join
+
+`plan.BindSelect` báo lỗi **rõ ràng** khi có bảng thứ ba, thay vì làm sai. Ba bảng đòi **chọn thứ
+tự join** — lập trình động trên tập con — và đó là một phase riêng.
+
+Outer join **khó hơn nó trông**, vì nó làm **sai hai phép tối ưu đã có**: `plan.propagate` (suy ra
+điều kiện qua phép bằng — chỉ đúng vì **mọi** hàng ra của inner join thoả `a.x = b.y`) và `push`
+(đẩy điều kiện của vế giữ xuống dưới outer join là đổi kết quả). Nên trả món này **phải** kèm
+hai bài test khẳng định hai phép ấy **không** chạy cho LEFT JOIN.
+
+### ⏳ P8-5 · `numParts` cố định 32, không chia phần đệ quy
+
+Grace hash join thật chia lại phần nào **vẫn** không vừa RAM. Bản này không, nên mọi kết luận của
+bảng số 2 trong `cmd/sqllab` là **có điều kiện** trên chỗ này. Đã ghi rõ tại `internal/exec/join.go`.
+
+**Cách trả:** đệ quy trên phần, cộng một bài test dựng dữ liệu **lệch nặng** (một giá trị khóa
+chiếm 90%) để một phần **chắc chắn** tràn — không có bài đó thì phép đệ quy không bao giờ chạy.
+
+### ⏳ P8-6 · Không có plan cache, dù đã **tự đo được** lý do phải có
+
+```console
+$ go run ./cmd/sqllab -work pipeline -rows 20000 -dim 200 -repeat 7
+câu                                              lex(µs)    parse*      bind  optimize      plan    thi hành
+SELECT id, city FROM ev WHERE id = 12345            0.94      1.09      0.96      0.11      2.10       1.82µs
+```
+
+Front-end (parse\* + bind + optimize + plan = 5.30µs) là **2.9x** phần thi hành (1.82µs) của một
+truy vấn **điểm**, và nó lặp **y nguyên** mỗi lần chạy cùng câu ấy.
+
+`engine.prepare` **đã tách riêng** (bind + optimize + plan, không chạm dữ liệu) nên chỗ để cắm cache
+đã sẵn. Thiếu: khóa cache (câu đã chuẩn hoá + phiên bản catalog) và phép **vô hiệu hoá** khi
+`CREATE INDEX` / `ANALYZE` chạy. **Bằng chứng phải có khi trả:** một bài test `CREATE INDEX` rồi
+chạy lại **cùng** câu và đòi kế hoạch **đổi** — một plan cache không vô hiệu hoá đúng lúc tệ hơn
+không có cache.
+
+### ⏳ P8-7 · Không có tham số truy vấn (`?` / `$1`)
+
+Đi liền P8-6: plan cache không có tham số thì chỉ ăn được với câu **giống nhau từng byte**, tức
+gần như vô dụng ngoài benchmark. Cũng là điều kiện để nói chuyện được về SQL injection — hiện
+cách duy nhất để truyền giá trị là nối chuỗi, và `quoteStr` (xem `internal/sql/ast.go`) chỉ lo
+nửa **in ra**, không lo nửa **nhận vào từ người dùng**.
+
+### ⏳ P8-8 · `CREATE INDEX` không nhận `DESC`
+
+`internal/keys` đã hỗ trợ chiều sắp **bằng phép bù byte** từ phase 7, và `internal/exec/sort.go`
+dùng nó. Chỗ thiếu chỉ là cú pháp và một cột trong catalog. Nên `ORDER BY x DESC` hiện **luôn**
+phải sắp, dù cây đã có sẵn thứ tự ngược — tức mất đúng cái **3284x** mà bảng số 5 đo được cho
+`LIMIT 10`.
+
+### ⏳ P8-9 · `os.Remove` ngay sau `os.CreateTemp` không chạy trên Windows
+
+**Cố ý.** Mẹo này là cách rẻ nhất để file tạm của spill **không sống sót** một lần crash, và cả repo
+đã `pread`/`pwrite`/`posix_fadvise` — tức đã chỉ chạy Linux từ phase 0. Ghi lại để không ai tưởng
+đó là sơ sót.
+
+### ⏳ P8-10 · `LIMIT` chưa đẩy được xuống dưới `Join`
+
+`LIMIT` trên một `Scan` thì dừng đúng lúc — đó là chỗ ăn **3284-3345x** ở bảng số 5 — nhưng qua một
+`Join` thì nó chỉ cắt ở **trên**. Với nested loop thì đẩy xuống được; với hash join thì **không**,
+vì vế build phải rút cạn trước — một ví dụ nữa của *"toán tử CHẶN phải báo rằng nó chặn"*.
+
+### ⏳ P8-11 · Chưa có `GROUP BY`, `HAVING`, hàm tổng hợp, `DISTINCT`
+
+Ngoài phạm vi roadmap phase 8. Ghi lại vì **hash aggregate dùng đúng cơ chế tràn đĩa của hash
+join**, nên nó là món **rẻ nhất** còn lại trong danh sách này — và nó sẽ tái sử dụng được ngay
+`internal/exec/spill.go`.
+
+### ⏳ P8-12 · `bench-txn` gộp `Get|Scan` dưới một `-benchtime`
+
+Lỗi của **bộ đo**, phát hiện ở phase 8: `-benchtime` tính **theo phép toán**, và `BenchmarkScan`
+quét **2000 khóa mỗi phép**. Nên `-benchtime=200000x` là **1.2 tỉ** bước khóa — đúng cho
+`BenchmarkGet`, vô lý cho `BenchmarkScan`. Chưa sửa vì sửa là chạm vào deliverable của phase 6.
+
+**Cách trả:** tách thành hai target, hoặc để `-benchtime` theo **thời gian** thay vì theo số lần.
 
 ---
 
@@ -653,6 +754,7 @@ predicate nào ngoài khoảng trên cột dẫn đầu.
 | ⏳ P2-3 · Page không có checksum riêng | **Chọn không** thêm checksum cho page: crc32c mỗi record log + **ảnh trọn page** ở lần chạm đầu sau mỗi checkpoint (`full_page_writes` của Postgres), redo áp vô điều kiện | `TestFullPageWriteAppearsOncePerCheckpoint`. Lý do phải thế: page bị torn thì `pageLSN` là **rác**, nên chốt `pageLSN >= rec.LSN` sẽ bỏ qua đúng cái page đang hỏng. Giá: payload 4244 vs 284 byte (`BenchmarkEncodeFullPage`) |
 | ⏳ P4-4 · Root đổi `PageID` mỗi lần cây cao thêm | **Quyết định: giữ cho root di chuyển.** Mỗi lần đổi sinh một record ROOT được log; meta chỉ giữ root ở lần checkpoint cuối | `make wallab`: `ROOT  9 record  504 byte  56 byte/record`. Không cố định root vào một page id, vì như thế phải **copy nội dung** mỗi lần cây cao thêm — mà việc copy ấy lại phải log trọn page, đắt hơn 56 byte |
 | ⏳ P6-4 · `Txn.Scan` materialize cả kết quả | `db.Iter` (latch chỉ giữ **một bước** `Next()`) + `Txn.Scan` viết lại thành **merge join** của hai dòng đã sắp: cursor trên cây, và bản sao đã sắp của phần write set trong khoảng. Cùng khóa thì write set thắng (*read-your-own-writes*) | `BenchmarkScanLimit` 1423-1668 ns vs quét cả bảng ~9.9 ms = **5032x** (`go run ./cmd/idxlab -work stream`). Bản materialize cho tỉ số **1x** vì nó đọc cả khoảng trước khi gọi `fn` lần đầu. Và món nợ này hoá ra **chặn cả phase 7**: index scan là một phép truy cây **trong** callback của một phép duyệt cây, nên với `Range` cũ nó **tự khoá chết** — `TestIterCallbackCanReadBack` là bài test của đúng hình đó |
+| ⏳ P7-9 · Chưa có `ORDER BY` dùng index, chưa có `Filter` đẩy xuống | Thuộc tính vật lý bắt buộc (`req []SortKey`) **đi XUỐNG** qua `plan.build`, và `scan()` liệt kê thêm một đường "dùng index CHỈ để lấy thứ tự"; `Filter` đẩy xuống bằng `plan.opt.push` — cộng một luật **không có trong kế hoạch**: `plan.propagate` suy ra điều kiện qua phép bằng của join | `go run ./cmd/sqllab -work order`: bỏ được `Sort` = **2.87-3.12x** không LIMIT, nhưng **3284-3345x** với `LIMIT 10` — một **bậc**, không phải một hệ số, vì `Sort` là toán tử **CHẶN**. Và `-work pushdown`: **83.86x** (một bảng, điều kiện thành khoảng quét) / **45.35x** (thu vế build của join) / **18.53x** (suy ra qua phép bằng). Dòng thứ ba **trước** khi có `propagate` chỉ đo được **1.18x**, và chính con số ấy chỉ ra luật còn thiếu — lần đầu trong 8 phase số đo tìm ra thứ **CHƯA CÓ**. Món này còn tố oan tôi một lần: bản đầu hạ **mọi** khoảng thành `Filter` khi đường đi là seq scan (trực giác đúng với Postgres, nơi bảng là **heap**; sai ở đây, nơi hàng nằm **trong** cây pk) — **5100 hàng thay vì 105, 4.062ms thay vì 88µs = 46x**, và không test nào bắt được vì kết quả vẫn đúng |
 | 🔧 P3-0 · `victim()` quay vô hạn khi WAL rule chặn mọi ứng viên | đếm số lần bị chặn, hết một vòng frame thì `ErrNoFrame` | `go test -run TestWALRule -timeout 10s` trước khi sửa: `panic: test timed out after 10s`; sau khi sửa: PASS, `store.Writes = 0` |
 
 ---

@@ -3,3 +3,21 @@
 *.db
 *.wal
 *.test
+
+# Nhị phân do `go build ./cmd/<x>` bỏ lại ở gốc repo. Danh sách này là món nợ
+# nhỏ mà phase 7 ghi lại sau khi để lọt một file `idxlab` vào cây làm việc:
+# `go build ./cmd/x` KHÔNG có -o thì nó ghi ./x, và mọi mẫu trong file này đều
+# không khớp một tên không có phần mở rộng.
+/minidb
+/iolab
+/pagerlab
+/slotlab
+/bufferlab
+/btreelab
+/crashlab
+/wallab
+/txnlab
+/idxlab
+/sqllab
+/tornlab
+/dbcheck

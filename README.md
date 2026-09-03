@@ -1,7 +1,7 @@
 # minidb
 
 Một database mini viết bằng Go để học **DB internals** — storage layer, B+Tree, WAL,
-recovery, MVCC, secondary index và query planner — chứ không phải để dùng thật.
+recovery, MVCC, secondary index, query planner và một front-end SQL — chứ không phải để dùng thật.
 
 - Hướng đi chung: [`ROADMAP.md`](./ROADMAP.md)
 - Nhật ký từng phase: [`diary/`](./diary)
@@ -21,6 +21,8 @@ cmd/crashlab/   phase 5 — 200 lần kill -9 ngẫu nhiên rồi kiểm durabil
 cmd/wallab/     phase 5 — soi một file WAL: gồm record gì, bao nhiêu phần trăm là thuế
 cmd/txnlab/     phase 6 — ba bảng: anomaly × mức isolation, chuyển tiền N goroutine, phình version
 cmd/idxlab/     phase 7 — năm bảng: điểm hoà vốn selectivity, thuế của index, hình byte của khóa
+cmd/minidb/     phase 8 — REPL SQL: gõ câu, xem kết quả, xem EXPLAIN cả cây logical lẫn physical
+cmd/sqllab/     phase 8 — sáu bảng: join, hạn mức bộ nhớ, sắp ngoài, pushdown, bỏ Sort, front-end
 cmd/dbcheck/    fsck cho file minidb — meta, freelist, double free, page mồ côi
 scripts/        linux-baseline.sh (đo baseline có thể so máy), dm-flakey.sh (bơm lỗi thiết bị)
 docs/           debts.md (sổ nợ + lệnh trả từng món), linux-baseline.md (đo trên Linux thuần)
@@ -36,6 +38,10 @@ internal/txn/   phase 6 — MVCC: chuỗi version, snapshot, 4 mức isolation, 
 internal/keys/  phase 7 — bộ mã hoá khóa giữ thứ tự: composite, ASC/DESC bằng phép bù, canonical
 internal/table/ phase 7 — catalog + nhiều bảng/index trong MỘT cây theo tiền tố oid; bất biến hàng<->index
 internal/query/ phase 7 — 3 kế hoạch (seq/index/index-only), mô hình chi phí, ước lượng selectivity
+internal/sql/   phase 8 — lexer + parser + AST. CHỈ cú pháp: không biết catalog, nên câu sai tên chết ở tầng sau
+internal/plan/  phase 8 — binder (tên/kiểu/logic 3 giá trị) + opt.go (viết lại LOGICAL) + planner.go (chọn đường VẬT LÝ)
+internal/exec/  phase 8 — Volcano/iterator: scan, nested loop, Grace hash join (tràn đĩa), external merge sort
+internal/engine/ phase 8 — ghép cả đường ống; EXPLAIN in CẢ HAI cây, trước và sau optimizer
 diary/          nhật ký học: giả thuyết sai, số đo, invariant
 skills/         quy ước làm việc trong repo (đọc trước khi ghi diary)
 ```
@@ -72,6 +78,13 @@ make test-index                     # phase 7: ba kế hoạch phải cho CÙNG 
 make bench-index                    # phase 7: ba hằng số của mô hình chi phí + giá index ở đường ghi
 make fuzz-keys                      # phase 7: thứ tự byte phải BẰNG thứ tự logic, ở mọi kiểu/chiều sắp
 make fuzz-table                     # phase 7: bất biến hàng<->index phải sống qua crash + mở lại
+make repl                           # phase 8: REPL SQL. Thử: CREATE TABLE t (a INT, b TEXT, PRIMARY KEY (a));
+make sqllab                         # phase 8: 6 bảng — join, hạn mức, sắp ngoài, pushdown, bỏ Sort, front-end
+make sqllab-join                    # phase 8: chỉ bảng nested loop vs hash join (điểm đổi vai ở W≈3)
+make sqllab-budget                  # phase 8: chỗ hash join BUỘC phải tràn ra đĩa, và cái giá
+make sqllab-sort                    # phase 8: cái giá của tràn đĩa là một BẬC THANG, không phải đường dốc
+make test-sql                       # phase 8: HAI ĐƯỜNG PHẢI CHO CÙNG MỘT KẾT QUẢ (-race)
+make fuzz-sql                       # phase 8: parser phải KẾT THÚC, và in-lại-rồi-đọc-lại phải bền
 make fuzz-btree                     # phase 4: fuzz chuỗi Put/Delete, đối chiếu map + Verify()
 make test                           # toàn bộ test (40 điểm crash của pager + bất biến của page)
 make check                          # fsck file data/test.db

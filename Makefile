@@ -209,6 +209,54 @@ fuzz-keys:
 fuzz-table:
 	go test ./internal/table/ -run '^$$' -fuzz FuzzTableIndex -fuzztime 120s -fuzzminimizetime 1s
 
+# ---------- phase 8: SQL front-end ----------
+
+# REPL. Gõ SQL, kết thúc câu bằng ';'. `make repl` rồi thử:
+#   CREATE TABLE t (a INT, b TEXT, PRIMARY KEY (a));
+#   INSERT INTO t VALUES (1,'x'),(2,'y');
+#   ANALYZE t;
+#   EXPLAIN ANALYZE SELECT b FROM t WHERE a = 1;
+repl:
+	go run ./cmd/minidb -db data/sql/minidb.db
+
+# Sáu bảng số của phase 8. Mỗi bảng là một câu hỏi của roadmap:
+#   join      — nested loop vs hash join, điểm đổi vai
+#   budget    — hạn mức bộ nhớ: chỗ hash join buộc phải tràn ra đĩa, và cái giá
+#   sort      — ORDER BY trong RAM vs external merge sort, số run
+#   pushdown  — predicate pushdown ăn tiền ở đâu trong CHÍNH engine này
+#   order     — bỏ bước ORDER BY nhờ thứ tự index (nợ P7-9), và chỗ LIMIT đổi bậc
+#   pipeline  — chi phí lex/parse/bind/optimize/plan so với thi hành
+sqllab:
+	go run ./cmd/sqllab -rows 20000 -dim 200
+
+sqllab-join:
+	go run ./cmd/sqllab -work join -rows 20000 -dim 200
+
+sqllab-budget:
+	go run ./cmd/sqllab -work budget -rows 20000 -dim 200
+
+sqllab-sort:
+	go run ./cmd/sqllab -work sort -rows 20000 -dim 200
+
+# Bài test đối chứng của phase 8, và nguyên tắc của nó chỉ có một câu: HAI
+# ĐƯỜNG PHẢI CHO CÙNG MỘT KẾT QUẢ. Nested loop vs hash join, tràn đĩa vs không
+# tràn, có Sort vs bỏ Sort, đẩy điều kiện vs không đẩy. Một phép tối ưu làm đổi
+# kết quả không phải phép tối ưu, nó là con bug — và nó chỉ lộ ra khi chạy cả
+# đường mà planner KHÔNG chọn.
+test-sql:
+	go test ./internal/sql/ ./internal/plan/ ./internal/engine/ -count=1 -race -v
+
+# FuzzParse — parser nhận đầu vào của NGƯỜI, nên mọi chuỗi byte là hợp lệ. Ba
+#   bất biến: không panic, luôn KẾT THÚC, và in lại rồi phân tích lại thì bền.
+#   Bất biến "luôn kết thúc" là bất biến đắt nhất: lượt code của phase 8 có một
+#   con bug thuộc loại ấy (`WHERE x = = 1` treo vô hạn) và một bài test thường
+#   chỉ đỏ khi kết quả sai, còn cái treo thì làm cả bộ test đứng.
+# FuzzLexer  — mỗi Next hoặc trả EOF hoặc đẩy con trỏ đi. Khẳng định trực tiếp,
+#   thay vì tin rằng mọi nhánh của switch đều có pos++.
+fuzz-sql:
+	go test ./internal/sql/ -run '^$$' -fuzz FuzzParse -fuzztime 120s -fuzzminimizetime 2s
+	go test ./internal/sql/ -run '^$$' -fuzz FuzzLexer -fuzztime 60s -fuzzminimizetime 2s
+
 # fsck: soi file database, thoát 1 nếu có lỗi nghiêm trọng
 check:
 	go run ./cmd/dbcheck data/test.db

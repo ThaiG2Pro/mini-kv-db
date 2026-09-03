@@ -13,8 +13,10 @@ Môi trường: Go 1.26.2, Linux (WSL2).
 ## Kiến trúc mục tiêu (bottom-up)
 
 ```
-SQL-ish layer      (phase 8, optional)
-Transaction/MVCC   (phase 6-7)  <- concurrency, isolation
+SQL front-end      (phase 8)    <- lexer/parser/binder, logical vs physical plan
+Query execution    (phase 8)    <- Volcano/iterator, join, sort, TOÁN TỬ CHẶN, tràn ra đĩa
+Index + planner    (phase 7)    <- khóa giữ thứ tự, catalog, mô hình chi phí
+Transaction/MVCC   (phase 6)    <- concurrency, isolation
 Access method      (phase 4)    <- B+Tree, cursor, iterator
 Recovery           (phase 5)    <- WAL, ARIES-lite, checkpoint
 Buffer pool        (phase 3)    <- page cache, eviction, pin/latch
@@ -40,7 +42,7 @@ xem mục "Sau roadmap" ở cuối.
 | 5 | ✅ **WAL + recovery**: ARIES-lite (analysis/redo/undo), checkpoint | 3-4 ngày (thực tế 2) | 200/200 lần `kill -9` ngẫu nhiên, 9194 txn đã commit được kiểm — **và** 10/10 báo SAI khi cố tình làm mất log ([diary/phase5.md](diary/phase5.md) · [log](diary/phase5-log.md)) |
 | 6 | ✅ **Transaction & concurrency**: MVCC snapshot isolation + S2PL, 4 mức isolation, deadlock detection | 3-4 ngày (thực tế 1) | Bảng 5 anomaly × 4 mức khớp lý thuyết từng ô, khẳng định theo **cả hai chiều**; chuyển tiền vỡ ở mức thấp, giữ ở mức cao; và **chỗ MVCC thua lock** ([diary/phase6.md](diary/phase6.md) · [log](diary/phase6-log.md)) |
 | 7 | ✅ **Secondary index + query**: bộ mã hoá khóa giữ thứ tự, catalog nhiều bảng trong một cây, 3 kế hoạch + mô hình chi phí đo được | 2-3 ngày (thực tế 2 buổi) | Điểm hoà vốn selectivity **đo được 36.8%** (không phải 5-20% như sách — vì ở quy mô này không có I/O thật), và bảng còn có cột **planner chọn sai** ([diary/phase7.md](diary/phase7.md) · [log](diary/phase7-log.md)) |
-| 8 | (tùy chọn) SQL front-end: parser -> planner -> executor, join | 2-3 ngày | Chạy được `SELECT ... JOIN ... WHERE` |
+| 8 | ✅ **SQL front-end**: lexer/parser/binder, logical vs physical plan, nested loop + Grace hash join, external merge sort, predicate pushdown, `EXPLAIN` | 2-3 ngày (thực tế 1) | Sáu bảng số, mỗi bảng là một câu hỏi của phase — và bảng **pushdown** chỉ ra một **luật optimizer còn thiếu** (1.18x → 18.53x sau khi thêm nó): lần đầu trong 8 phase số đo tìm ra thứ **CHƯA CÓ**, không phải thứ sai ([diary/phase8.md](diary/phase8.md) · [log](diary/phase8-log.md)) |
 
 Tổng ~4-6 tuần với 2-3h/ngày.
 **Bắt buộc: phase 1-5** (storage + B+Tree + WAL). Phase 6 là phần nâng bạn từ "biết DB" lên "thiết kế được DB".
@@ -282,12 +284,60 @@ mọi txn đã báo commit đều còn, mọi txn chưa commit biến mất hoà
   phase 5), và histogram — vì `TestEstimateIsWrongOnSkew` đang khẳng định **đúng cái giới hạn ấy**
   và sẽ đỏ khi ai đó trả P7-6.
 
-## Phase 8 — (tùy chọn) SQL front-end (2-3 ngày)
+## Phase 8 — SQL front-end (2-3 ngày) — ✅ xong
 
-Lexer -> parser -> AST -> planner -> executor.
-Chỉ cần `CREATE TABLE`, `INSERT`, `SELECT ... WHERE`, `ORDER BY`, và JOIN đơn giản
-(nested loop + hash join). Mục tiêu: hiểu join algorithm và vì sao hash join cần memory budget
--> spill to disk.
+Lexer -> parser -> AST -> binder -> optimizer -> planner -> executor. `CREATE TABLE`,
+`CREATE INDEX`, `INSERT`, `ANALYZE`, `SELECT ... WHERE ... ORDER BY ... LIMIT`, JOIN hai bảng
+(nested loop + Grace hash join), và `EXPLAIN` in ra kế hoạch của chính mình.
+
+**Điều mở màn phase không phải parser.** Phase 6 và 7 xây **mọi** đường đọc theo API **push**
+(`Scan(lo, hi, fn)` — vòng lặp thuộc về `Scan`). Không join algorithm nào diễn tả được bằng
+callback mà không đệm cả một vế vào RAM (đúng cái P6-4 vừa trả nợ để bỏ), sinh một goroutine mỗi
+vế (`txn.Txn` không an toàn nhiều goroutine), hay đảo ngược kiểu continuation. Nên phase 8 mở màn
+bằng một **ca mổ**: đổi push -> pull ở `internal/txn` và `internal/table`, với `Iter` là **bản
+duy nhất** cài phép merge và `Scan` là lớp bọc. Đo cái giá: **≤1.08x** (so với đúng HEAD phase 7
+qua `git worktree`, không so với số cũ trong diary phase 6 — số ấy đã lỗi thời từ phase 7).
+
+**Ba package, và lằn ranh giữa chúng là câu trả lời cho "logical khác physical ở đâu":**
+
+```
+internal/sql/     cú pháp. KHÔNG biết catalog -> câu sai tên chết trước khi tốn một lần xuống cây
+internal/plan/    ngữ nghĩa + tối ưu. opt.go (logical, ĐỊNH LÝ) tách khỏi planner.go (physical, TÌNH HUỐNG)
+internal/exec/    thi hành. KHÔNG biết SQL. Volcano/iterator, có toán tử CHẶN (Sort, build của hash join)
+internal/engine/  ghép lại + EXPLAIN in CẢ HAI cây (trước và sau optimizer)
+```
+
+**Deliverable:** `make test-sql` (nguyên tắc một câu: *hai đường phải cho CÙNG một kết quả* —
+dựng kế hoạch bằng tay để chạy được cả đường planner **không** chọn), `make sqllab` (6 bảng),
+`make fuzz-sql` (parser luôn **kết thúc**, và in-lại-rồi-đọc-lại thì bền — bất biến này bắt bug
+thật trong **13 giây**).
+
+**Kết quả:** hash join vs nested loop **1.25x → 121.25x** theo kích thước vế ngoài; hạn mức bộ
+nhớ là tham số **đổi thuật toán** (dưới/trên ngưỡng tràn = **2.10-2.16x**, còn trên ngưỡng thì
+thêm RAM mua được **1.06x** tức nhiễu); cái giá của tràn đĩa là một **bậc thang** không phải
+đường dốc (vào ngưỡng 1.46x, rồi giảm hạn mức thêm **20 lần** chỉ lên 1.53x — từ đó suy ra
+**so sánh không phải chỗ tốn**, vì khoá run là bộ mã hoá giữ thứ tự của phase 7 nên trộn là
+memcmp); bỏ được `Sort` nhờ thứ tự index **2.87x** không LIMIT nhưng **3284-3345x** với
+`LIMIT 10` (một **bậc**, vì Sort là toán tử **chặn**); và front-end là **2.9x** phần thi hành của
+một truy vấn **điểm** — tự đo được lý do prepared statement và plan cache tồn tại.
+
+**Ba bài học không nằm trong năm câu hỏi:**
+
+1. **Loại bug đắt nhất là một câu ĐÚNG về một database KHÁC.** Tôi cố ý hạ mọi khoảng thành
+   `Filter` khi đường đi là seq scan — đúng với Postgres (bảng là **heap**), sai ở đây (engine là
+   **clustered index**, hàng nằm **trong** cây pk từ phase 7). Tự tắt phép tối ưu của chính mình:
+   **5100 hàng thay vì 105, 4.062ms thay vì 88µs = 46x**. Không test nào bắt được — kết quả đúng.
+2. **"Chi phí 0" và "không đọc gì" là hai phát biểu khác nhau**, và chúng không tự đồng bộ. **Năm**
+   trong mười hai con bug của phase này **không làm sai kết quả** — chúng chỉ làm engine tốn công.
+   Nên: **một bài test cho optimizer phải khẳng định về CÔNG VIỆC ĐÃ LÀM, không chỉ về kết quả.**
+3. **Một con số cũ trong nhật ký là một con số vô hình.** Diary phase 6 ghi `BenchmarkScan` =
+   688-732µs; phase 7 viết lại `Scan` thành streaming và **không đo lại** (thật ra là **317-363µs**).
+   Dùng số cũ thì kết luận sai về nhân quả. Quy tắc mới: **một phase làm đổi một con số của phase
+   trước thì phải đo lại và ghi cả hai.**
+
+- **Trả nợ phase trước:** **P7-9** (đầy đủ — `ORDER BY` dùng thứ tự index, và `Filter` đẩy xuống).
+  Nợ mới: **P8-1 → P8-12**. Món lớn nhất là **P8-1**: chưa có `BEGIN`/`COMMIT`, nên phase 6 có 4
+  mức isolation mà **không viết được** một transaction nhiều câu **bằng SQL**.
 
 ---
 
