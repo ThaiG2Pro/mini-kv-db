@@ -1,9 +1,23 @@
-# Trả nợ Phase 0 trên máy Linux thuần
+# Trả nợ Phase 0–3 trên máy Linux thuần
 
 Bản đo đầu tiên chạy trên WSL2 (ext4 trên đĩa ảo trên NTFS). Nó đủ để rút ra **tỉ số**,
-nhưng để lại 5 món nợ. File này là **hướng dẫn trả từng món**, mỗi món một lệnh cụ thể.
+nhưng để lại 5 món nợ ở phase 0 và 3 món "chạy lại bench" ở phase 1–3. File này là **hướng dẫn
+trả từng món**, mỗi món một lệnh cụ thể.
 
-Trả dần cũng được — thứ tự khuyến nghị: **#3 → #5 → #2 → #4 → #1** (rẻ trước, đắt sau).
+Trả dần cũng được — thứ tự khuyến nghị: **#3 → #5 → #2 → #4 → P1-6/P2-5/P3-5 → #1** (rẻ trước,
+đắt sau). `linux-baseline.sh` ở nợ #4 chạy luôn cả ba món của phase 1–3.
+
+**Các món 📏 cần Linux thuần, và ở đâu:**
+
+| Món | Hướng dẫn | Lệnh |
+|---|---|---|
+| P0-1…P0-5 | file này | `./scripts/linux-baseline.sh`, `./scripts/dm-flakey.sh` |
+| P1-6, P2-5, P3-5 | file này, mục cuối | `./scripts/linux-baseline.sh` (chạy chung) |
+| P9-7 | [`linux-phase9.md`](./linux-phase9.md) | `./scripts/p97-hashjoin.sh` |
+
+Các món 📏 khác trong [`debts.md`](./debts.md) (P3-1, P4-3, P4-6, P4-7, P5-6, P6-6, P7-4, P7-5,
+P7-7, P9-1, P9-3, P9-4) **không** cần đổi máy: chúng cần viết thêm code hoặc chạy lâu hơn, và
+WSL2 làm được.
 
 ## Chuẩn bị (5 phút)
 
@@ -148,12 +162,51 @@ Ba kết cục đều là dữ liệu đáng ghi:
 Cũng để ý `fsck` trong bước `heal`: nếu **chính filesystem** hỏng sau khi nuốt write, đó là lời
 nhắc rằng DB không được phó thác durability cho filesystem.
 
+## Nợ P1-6, P2-5, P3-5 — tỉ số của phase 1–3 có sống sót không?  ⏱ 10 phút
+
+**Vì sao:** các tỉ số dưới đây là nền cho thiết kế của các phase sau. Chúng đo trên WSL2, nơi
+`VerifyRef` dao động tới 43% giữa hai lần chạy. Tỉ số nào sống sót qua máy khác thì mới dựa vào
+được.
+
+`linux-baseline.sh` đã chạy cả ba (bước 4). Muốn chạy riêng:
+
+```bash
+mkdir -p $DIR/tmp
+TMPDIR=$DIR/tmp go test ./internal/pager   -run XXX  -bench . -benchtime=200x -count=5   # P1-6
+TMPDIR=$DIR/tmp go test ./internal/page    -run XXX  -bench . -benchmem -count=5         # P2-5
+TMPDIR=$DIR/tmp go test ./internal/bufpool -run '^$' -bench . -benchmem -count=5 -cpu 1,6  # P3-5
+```
+
+**Đừng bỏ `TMPDIR`.** Bench của pager ghi file vào `b.TempDir()`, mặc định là `/tmp`. Trên
+Fedora, Arch và nhiều bản khác, `/tmp` là tmpfs: fsync ở đó không tốn gì, và tỉ số 481x sụp về
+khoảng 1x mà không có gì báo lỗi. `env.txt` có ghi `findmnt -T /tmp` để kiểm lại sau.
+
+**Tính lại các tỉ số** (lấy trung vị ns/op của 5 lần chạy):
+
+| Nợ | Tỉ số | Trên WSL2 | Tính từ |
+|---|---|---|---|
+| P1-6 | `Commit` / `CommitNoSync` | **481x** (1373722 / 2852) | `p1-pager.txt` |
+| P1-6 | `Commit` / mỗi page của `CommitBatch64` | **43x** (1373722 / 32005) | `p1-pager.txt` |
+| P2-5 | `VerifyRefFullPage` / `VerifyFullPage` | **5.5x** (19768 / 3583) | `p2-page.txt` |
+| P2-5 | `CompactScrambled` insertion sort / `slices.SortFunc` | **25x** (229810 / 9169) | `p2-page.txt`. Bản cũ không còn trong code: so ns/op mới với 9169 |
+| P3-5 | `pread` cache lạnh (phase 0) / hit của pool | **1366x** (69µs / ~50ns) | `buffered.txt` + `p3-bufpool.txt` |
+| P3-5 | `PinHitParallel` 6 luồng / 1 luồng | **2.3x** | `p3-bufpool.txt`, `-cpu 1,6` |
+
+**Cách đọc:** số tuyệt đối (ns/op) đổi theo máy là chuyện bình thường. Điều cần xem là **tỉ số**.
+Lệch trong khoảng 2x thì kết luận của phase đó còn đứng. Lệch hơn nhiều thì ghi một dòng
+"giả thuyết sai" vào diary của phase đó, và xem lại quyết định thiết kế nào dựa trên tỉ số này.
+Riêng 481x phụ thuộc vào ổ đĩa (fsync), nên đọc kèm `write_cache` trong `env.txt`.
+
+Hit ratio và các con số đếm (số page, số lần đọc) thì **không cần** đo lại: chúng không có đơn
+vị thời gian, và không phụ thuộc máy.
+
 ---
 
 ## Sau khi đo xong
 
 1. Dán `env.txt` vào mục **Môi trường** của `diary/phase0.md` (thay cho phần WSL2, hoặc thêm
-   một mục "đo lại trên Linux thuần" — giữ cả hai để so).
+   một mục "đo lại trên Linux thuần" — giữ cả hai để so). Tỉ số của phase 1–3 thì dán vào
+   `diary/phase1.md`, `phase2.md`, `phase3.md`, kèm một dòng trỏ về `env.txt`.
 2. Cập nhật bảng **tỉ số**, ghi rõ lệnh + ngày + commit + máy.
 3. Mỗi món nợ trả xong thì **tick checkbox** ở mục "Nợ kỹ thuật", và ghi một dòng vào bảng
    **giả thuyết sai** nếu số thật khác dự đoán — đó mới là phần đáng giá.
