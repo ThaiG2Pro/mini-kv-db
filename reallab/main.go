@@ -1,7 +1,7 @@
 // reallab là bài lab của phase 9: lấy từng con số đã đo trên minidb, đặt câu
 // hỏi y hệt cho Postgres, MySQL (InnoDB) và MariaDB (InnoDB fork), rồi so.
 //
-// Bảy bảng, bảy câu hỏi:
+// Tám bảng, tám câu hỏi:
 //
 //	-work breakeven : index scan thắng seq scan tới độ chọn lọc nào (phase 7: 36.8%)
 //	-work anomaly   : anomaly nào lọt ở mức isolation nào (phase 6: bảng 5×4)
@@ -10,6 +10,7 @@
 //	-work stats     : planner chọn sai khi thống kê lệch (phase 7: nợ P7-6)
 //	-work crash     : kill -9 giữa lúc ghi, có mất commit nào không (phase 5: crashlab)
 //	-work lograte   : ở chế độ không chờ log, redo được write() theo nhịp nào (nợ P9-6)
+//	-work hashjoin  : vì sao hash join tràn đĩa lại nhanh hơn trong RAM (nợ P9-7)
 //
 // Cần lab đang chạy: `docker compose -f reallab/docker-compose.yml up -d`.
 package main
@@ -40,12 +41,14 @@ var dsns = map[string][2]string{
 	"pg":    {"pgx", "postgres://postgres:lab@127.0.0.1:55432/lab?sslmode=disable&default_query_exec_mode=simple_protocol"},
 	"mysql": {"mysql", "root:lab@tcp(127.0.0.1:53306)/lab?multiStatements=true&interpolateParams=true"},
 	"maria": {"mysql", "root:lab@tcp(127.0.0.1:53307)/lab?multiStatements=true&interpolateParams=true"},
+	// Postgres với glibc malloc không trả bộ nhớ lại cho OS (nợ P9-7, bảng 8).
+	"pgm": {"pgx", "postgres://postgres:lab@127.0.0.1:55433/lab?sslmode=disable&default_query_exec_mode=simple_protocol"},
 }
 
 func open(name string) (*Engine, error) {
 	d, ok := dsns[name]
 	if !ok {
-		return nil, fmt.Errorf("không biết db %q (pg|mysql|maria)", name)
+		return nil, fmt.Errorf("không biết db %q (pg|mysql|maria|pgm)", name)
 	}
 	db, err := sql.Open(d[0], d[1])
 	if err != nil {
@@ -56,7 +59,7 @@ func open(name string) (*Engine, error) {
 		return nil, fmt.Errorf("%s: %w (lab đã chạy chưa?)", name, err)
 	}
 	kind := "my"
-	if name == "pg" {
+	if strings.HasPrefix(name, "pg") {
 		kind = "pg"
 	}
 	return &Engine{Name: name, Kind: kind, DB: db}, nil
@@ -64,7 +67,7 @@ func open(name string) (*Engine, error) {
 
 func main() {
 	var (
-		work   = flag.String("work", "all", "breakeven | anomaly | pkorder | bloat | stats | crash | lograte | all")
+		work   = flag.String("work", "all", "breakeven | anomaly | pkorder | bloat | stats | crash | lograte | hashjoin | all")
 		dbs    = flag.String("db", "pg,mysql,maria", "danh sách DB, cách nhau bằng dấu phẩy")
 		rows   = flag.Int("rows", 1_000_000, "số hàng cho breakeven / stats")
 		repeat = flag.Int("repeat", 5, "số lần chạy mỗi truy vấn, lấy trung vị")
@@ -97,6 +100,7 @@ func main() {
 	run("stats", func() error { return workStats(es, *rows) })
 	run("crash", func() error { return workCrash(es, *rounds) })
 	run("lograte", func() error { return workLogRate(es) })
+	run("hashjoin", func() error { return workHashJoin(es, *repeat) })
 	if bad {
 		os.Exit(1)
 	}

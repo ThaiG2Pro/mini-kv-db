@@ -29,7 +29,7 @@ import (
 	"time"
 )
 
-var containers = map[string]string{"pg": "rl-pg", "mysql": "rl-mysql", "maria": "rl-maria"}
+var containers = map[string]string{"pg": "rl-pg", "mysql": "rl-mysql", "maria": "rl-maria", "pgm": "rl-pgm"}
 
 type crashMode struct {
 	name  string

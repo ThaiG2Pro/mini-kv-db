@@ -788,10 +788,24 @@ Không làm nóng, không lấy trung vị: chỉ dùng được để xem thứ
 
 ### 📏 P9-7 · Hash join tràn đĩa nhanh hơn trong RAM (Postgres)
 
-`blog/lab/10-explain-pg.sql` mục 6: 16 batch 268–291ms, 1 batch 344–366ms. **Giả thuyết:** bảng băm
-21.6MB > L3 12MB. **Trả bằng:** `perf stat -e cache-misses` trên tiến trình backend cho hai cấu hình;
-kỳ vọng số cache miss của bản 1 batch cao hơn hẳn. Nếu đúng, xem minidb có hưởng được điều đó không
-(minidb tràn đĩa đắt 2.1x, phase 8).
+`blog/lab/10-explain-pg.sql` mục 6: 16 batch 268–291ms, 1 batch 344–366ms. **Đã trả một nửa trên
+WSL2** (diary/phase9.md, bảng 8): page fault do glibc trả bộ nhớ cho OS chỉ chiếm ~20ms. Phần
+chính là 67–98ns mỗi hàng probe, tăng tuyến tính theo số hàng probe, khớp độ trễ một lần trượt
+xuống RAM đo bằng microbenchmark. Bằng chứng mới gián tiếp: WSL2 không có PMU nên không đếm được
+cache miss.
+
+**Còn lại, trả trên Linux thuần** (⏱ ~10 phút, lần đầu nạp dữ liệu ~1 phút):
+
+```bash
+sudo apt install -y linux-tools-$(uname -r) linux-tools-generic
+./scripts/p97-hashjoin.sh            # REPEAT=21 nếu máy vẫn nhiễu
+```
+
+Kết quả nằm ở `bench/p97/<host>-<ngày>/`. Đọc bảng E: H1 đúng thì cột 256MB có ≥ 1 lần
+`LLC-load-misses` hoặc `dTLB-load-misses` trên mỗi hàng probe, cột 1MB thấp hơn hẳn. Nếu hai cột
+bằng nhau thì H1 sai, và 70–95ns kia đến từ chỗ khác (số lệnh, rẽ nhánh: xem IPC =
+instructions/cycles). Sau đó mới xem minidb có hưởng được điều này không (ở phase 8, minidb tràn
+đĩa đắt 2.1x).
 
 ## Đã trả
 

@@ -71,6 +71,8 @@ go run . -work bloat                   # bảng 4
 go run . -work stats                   # bảng 5
 go run . -work crash -rounds 5         # bảng 6, ~4 phút, giết và khởi động lại container
 go run . -work lograte -db mysql,maria # bảng 7, ~15 giây
+go run . -work hashjoin -db pg,pgm -repeat 11   # bảng 8, ~6 phút, cần: docker compose --profile p97 up -d pgm
+../scripts/p97-hashjoin.sh             # bảng 8 phép E, chỉ trên Linux thuần (cần PMU + perf + sudo)
 for f in ../blog/lab/0[1235]*-pg.sql ../blog/lab/08-index-pg.sql ../blog/lab/10-explain-pg.sql; do ./q.sh pg $f; done
 docker compose down -v                 # dọn
 ```
@@ -958,6 +960,124 @@ Hai điều giữ lại cho blog:
 2. Cùng tên biến, cùng tên bộ đếm, hai DB cùng họ InnoDB mà nghĩa khác nhau:
    `Innodb_os_log_written` của MariaDB đếm LSN, còn của MySQL đếm byte đã write().
 
+### 2026-09-29 — bảng 8: nợ P9-7, trả một nửa trên WSL2 (phần còn lại chờ Linux thuần)
+
+Câu hỏi từ blog bài 10: vì sao hash join 16 batch (tràn ra file tạm) lại nhanh hơn 1 batch (bảng
+băm 21.6MB nằm trọn trong RAM)? Bài `reallab/hashjoin.go`. Hai giả thuyết, mỗi cái một dự báo
+khác nhau, viết **trước** khi đo:
+
+- **H1, cache/TLB:** mỗi lần probe vào bảng băm lớn là một lần trượt cache. Dự báo: khoảng chênh
+  (1 batch − 16 batch) **tăng tuyến tính theo số hàng probe**, và tắt page fault không xoá được nó.
+- **H2, page fault:** glibc cấp khối lớn bằng `mmap` rồi trả lại cho OS sau mỗi câu, nên câu sau
+  chạm page nào cũng dính fault. Dự báo: khoảng chênh đi cùng số minor fault, **không** phụ thuộc
+  số hàng probe, và biến mất trên `rl-pgm` (cùng Postgres 17, `GLIBC_TUNABLES` giữ bộ nhớ lại).
+
+`perf stat -e cache-misses` (cách trả nợ ghi trong debts) **không chạy được**: WSL2 không đưa
+PMU vào VM, không có `/sys/bus/event_source/devices/cpu`. Nên chỉ đo được gián tiếp: page fault
+đọc từ `/proc/<pid>/stat` của backend, và độ trễ bộ nhớ của máy bằng một microbenchmark (phép D).
+
+Ba cái bẫy của bộ đo, sửa lần lượt trước khi có số dùng được:
+
+1. `mmap_threshold=1GB` bị glibc **lặng lẽ bỏ qua**: trần của nó là 32MB (HEAP_MAX/2). `rl-pgm`
+   vẫn dính 4000 fault mỗi câu cho tới khi đặt `33554432`.
+2. Lọc `a.id <= P` để giảm số hàng probe thì planner **đổi phía băm** khi P nhỏ. Thay bằng bảng
+   `hjp` (hj × 4, lọc `a.r <= k`) và in cột "phía băm" để chắc nó luôn là `b`.
+3. Đọc page fault qua `docker exec … cat /proc/…` trước và sau mỗi câu: mỗi lần là một lần khởi
+   động runc ngay trước câu đang đo, một dòng ra khoảng chênh **âm** (−27.8ms). Chuyển sang đọc
+   `/proc` của host (đổi pid bằng dòng `NSpid`).
+
+Sau đó số vẫn nhảy ±30% giữa hai lượt (cùng câu 337ms rồi 540ms). i5-1235U có 2 nhân P + 8 nhân
+E, WSL2 không cho ghim nhân, máy đang dùng 1.4GB swap. Không giảm được nhiễu thì **trừ** nó đi: B
+và C đo theo cặp, hai cấu hình chạy xen kẽ sát nhau, lấy trung vị của hiệu từng cặp.
+
+```console
+$ go run . -work hashjoin -db pg,pgm -repeat 11
+== 8. hash join: vì sao tràn đĩa lại nhanh hơn (Postgres) ==
+
+A. pg: build 500k hàng, probe 1M hàng, chỉ đổi work_mem (trung vị 11 lần)
+  work_mem   batch    bucket     bộ nhớ        ms  page fault
+       1MB      16     65536     1615kB     742.6         296
+       2MB       8    131072     3225kB     505.2         535
+       4MB       4    262144     6444kB     554.8        3969
+       8MB       2    524288    12879kB     605.0        4064
+      16MB       1    524288    21657kB     561.4        4091
+      32MB       1    524288    21657kB     530.8        4095
+     256MB       1    524288    21657kB     577.9        4103
+
+A. pgm: build 500k hàng, probe 1M hàng, chỉ đổi work_mem (trung vị 11 lần)
+  work_mem   batch    bucket     bộ nhớ        ms  page fault
+       1MB      16     65536     1615kB     427.7          11
+       2MB       8    131072     3225kB     827.8           3
+       4MB       4    262144     6444kB     517.2           3
+       8MB       2    524288    12879kB     519.3           3
+      16MB       1    524288    21657kB     510.2           3
+      32MB       1    524288    21657kB     757.6           3
+     256MB       1    524288    21657kB     544.4           3
+
+B. pg: build 500k hàng cố định, đổi số hàng probe; cặp (1MB, 256MB) × 11
+   probe  phía băm     1MB ms    256MB ms    chênh ms     ns/probe  fault 256MB
+      1M         b      452.3       562.5        78.4         78.4         4091
+      2M         b      671.9       860.7       191.1         95.6         4079
+      3M         b      920.4      1250.3       275.4         91.8         4095
+      4M         b     1106.3      1485.8       390.7         97.7         4079
+
+B. pgm: build 500k hàng cố định, đổi số hàng probe; cặp (1MB, 256MB) × 11
+   probe  phía băm     1MB ms    256MB ms    chênh ms     ns/probe  fault 256MB
+      1M         b      522.9       611.4        78.0         78.0            3
+      2M         b     1004.4      1032.7       136.0         68.0            3
+      3M         b      862.2      1092.1       201.3         67.1            3
+      4M         b     1125.7      1497.9       332.4         83.1            3
+
+C. cùng câu, cùng work_mem, chỉ khác malloc: cặp (pg, pgm) × 11, probe 1M
+  work_mem      pg ms     pgm ms    chênh ms   fault pg  fault pgm
+       1MB      497.9      485.5         6.7         67          3
+     256MB      555.9      535.2       -22.9       4079          3
+
+E. bỏ qua: máy này không có PMU (WSL2, VM không bật vPMU) — không đếm được cache miss.
+   Chạy trên Linux thuần: scripts/p97-hashjoin.sh
+
+D. đọc ngẫu nhiên, độc lập, vào mảng uint64 (như probe vào mảng bucket)
+      mảng    độc lập ns dây chuyền ns
+      64KB          0.71          4.11
+     256KB          0.78          6.32
+     512KB          0.92          8.36
+    1024KB          0.99          8.41
+    2048KB          1.72         18.09
+    4096KB          2.19         32.77
+    8192KB          3.21         79.69
+   16384KB          5.63        108.38
+   32768KB          9.39        141.97
+   65536KB         21.57        138.88
+```
+
+**Đọc kết quả:**
+
+| | H1 dự báo | H2 dự báo | đo được |
+|---|---|---|---|
+| chênh theo số hàng probe (B) | tăng tuyến tính | phẳng | 78 → 191 → 275 → 391ms: **tuyến tính**, 78–98 ns/probe |
+| tắt page fault (B trên pgm) | vẫn còn | mất | fault 4091 → 3, chênh vẫn 78 → 332ms, 67–83 ns/probe |
+| cùng câu 256MB, pg − pgm (C) | — | = toàn bộ khoảng chênh | **23ms**, trong khi khoảng chênh ở 1M probe là 78ms |
+
+1. **H2 đúng nhưng nhỏ.** Page fault có thật (4000 lần mỗi câu khi bảng băm ≥ 4MB, vì glibc trả
+   khối `mmap` lại cho OS), nhưng chỉ chiếm khoảng 20ms, và không đổi theo số hàng probe.
+2. **Phần lớn là một phí cố định trên mỗi hàng probe: 67–98ns.** Con số này khớp với độ trễ của
+   một lần trượt cache thật trên máy này (phép D, dây chuyền: 80ns ở mảng 8MB, 108–142ns ở
+   16–32MB). Nó **không** khớp với đọc độc lập (2–9ns): giữa hai lần probe có hàng nghìn lệnh
+   của executor, nên CPU không chồng được hai lần trượt lên nhau.
+3. Nghĩa là mỗi hàng probe trượt khoảng **một lần** xuống RAM. Mảng bucket 4MB cộng 21.6MB tuple
+   rải khắp heap vượt L3 12MB. Còn 16 batch thì mỗi batch chỉ có 512KB bucket và 1.6MB tuple,
+   nằm gọn trong L2 1.25MB/L3.
+
+**Chưa trả hẳn:** mọi bằng chứng cho H1 ở đây đều gián tiếp (độ dốc theo số hàng probe, và con số
+khớp với microbenchmark). Chưa đếm được cache miss trực tiếp, và chưa tách được L3 miss với TLB
+miss. Cửa sau đã dựng sẵn cho máy Linux thuần, cùng tinh thần `scripts/linux-baseline.sh` của
+phase 0: `./scripts/p97-hashjoin.sh`. Script kiểm có PMU trước, ghi `lscpu`/governor/THP vào
+`env.txt`, dựng `rl-pg` + `rl-pgm`, rồi chạy thêm phép E: `perf stat -p <backend>` với
+`cache-misses`, `LLC-load-misses`, `dTLB-load-misses`, `cycles`, `instructions` cho 1MB và 256MB,
+chia theo hàng probe. Phần parse đã được thử bằng một `perf` giả; `perf` thật thì chưa chạy lần
+nào. **Dự báo cho máy đó:** nếu H1 đúng, cột 256MB phải có ≥ 1 lần LLC miss hoặc dTLB miss trên
+mỗi hàng probe, còn cột 1MB thì thấp hơn hẳn.
+
 ### 2026-09-29 — các thí nghiệm nhỏ cho blog (bài 1, 2, 3, 5, 8, 10)
 
 Mỗi bài blog có một script trong `blog/lab/`. Output đầy đủ nằm ngay trong bài; ở đây chỉ ghi các
@@ -991,7 +1111,7 @@ Ba chỗ đo sai hoặc bất ngờ:
    thức. Đây là một chỗ minidb làm **nhiều hơn** Postgres.
 3. **Hash join tràn đĩa nhanh hơn hash join trong RAM.** Lặp lại ổn định qua 3 lượt. Giả thuyết:
    bảng băm 21.6MB lớn hơn L3 (12MB) của i5-1235U, còn mỗi batch chỉ 1.6MB; file tạm nằm trong page
-   cache nên gần như không tốn I/O. Chưa chứng minh (nợ P9-7). Nó ngược với minidb, nơi tràn đĩa
+   cache nên gần như không tốn I/O. Bảng 8 đo được gián tiếp: khoảng 70–95ns mỗi hàng probe, đúng cỡ một lần trượt xuống RAM; đếm trực tiếp thì chờ Linux thuần (nợ P9-7). Nó ngược với minidb, nơi tràn đĩa
    đắt 2.1x (phase 8).
 
 ---
@@ -1012,6 +1132,8 @@ Ba chỗ đo sai hoặc bất ngờ:
 | *(bug của bộ đo)* `Innodb_os_log_written` đếm byte redo đã write(), trên cả hai DB | Đúng trên MySQL. Trên MariaDB 11.8 nó tăng đúng bằng `Innodb_lsn_current`, tức đếm redo được sinh ra | Lượt đầu bảng 7: MariaDB "ghi mỗi 5.6ms" dù mất 9123 commit; mẫu tay: cả hai bộ đếm cùng tăng 850223 | Đọc `Innodb_lsn_flushed` trên MariaDB: 3 lần mỗi 3s |
 | MySQL mất ít hơn MariaDB ở `=0` vì một cơ chế lạ nào đó của MySQL 8 | Chính là luồng `log_writer`: tắt nó (`innodb_log_writer_threads=OFF`) thì mất 689 mỗi lần kill thay vì 1.2 | `go run . -work crash -db mysql`: 6 so với 3447 commit mất / 5 vòng | Trả nợ P9-6; thêm chế độ vào `crash.go` |
 | Hash join tràn đĩa thì chậm hơn chạy trong RAM | Postgres: 16 batch **nhanh hơn** 1 batch 1.2–1.3x (268–291 vs 344–366ms) | `blog/lab/10-explain-pg.sql` mục 6, 3 lượt | Không sửa; ghi vào blog bài 10, nợ P9-7 |
+| Postgres nhanh lên khi tràn đĩa là do page fault: glibc trả bộ nhớ bảng băm cho OS sau mỗi câu | Page fault có thật (4000 lần mỗi câu) nhưng chỉ chiếm ~20ms. Khoảng chênh tăng tuyến tính theo số hàng probe, và vẫn còn khi malloc giữ bộ nhớ | `go run . -work hashjoin -db pg,pgm`: B trên pgm, fault 3, chênh vẫn 78 → 332ms; C: pg − pgm = 23ms | Giữ H1 (cache); đếm trực tiếp chờ `scripts/p97-hashjoin.sh` |
+| `glibc.malloc.mmap_threshold=1GB` tắt được `mmap` cho khối lớn | Trần là 32MB; giá trị lớn hơn bị bỏ qua mà không báo gì | `rl-pgm` vẫn 4000 fault / câu cho tới khi đặt `33554432` | Ghi trần vào comment của `docker-compose.yml` |
 
 ---
 
@@ -1094,4 +1216,4 @@ lệch.
 - [ ] 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x trên cùng lượng việc: chưa biết vì sao
 - [ ] 🔧 P9-5 · Cột `ms` của bảng 5 là một lần `EXPLAIN ANALYZE`, không làm nóng, không lấy trung vị
 - [x] 📏 P9-6 · MySQL `flush_log_at_trx_commit=0` + `sync_binlog=0` chỉ mất 6 commit khi `kill -9`, MariaDB mất 9123: **trả ở bảng 7**, do luồng `log_writer` (tắt nó thì mất 3447)
-- [ ] 📏 P9-7 · Hash join 16 batch nhanh hơn 1 batch 1.2–1.3x trên Postgres: giả thuyết L3 cache, chưa đo (cần `perf stat -e cache-misses`)
+- [ ] 📏 P9-7 · Hash join 16 batch nhanh hơn 1 batch 1.2–1.3x trên Postgres. **Bảng 8, trả một nửa:** page fault chỉ ~20ms; phần chính là 67–98ns mỗi hàng probe, khớp độ trễ một lần trượt xuống RAM (đo gián tiếp). Còn đếm cache/TLB miss trực tiếp: `./scripts/p97-hashjoin.sh` trên Linux thuần

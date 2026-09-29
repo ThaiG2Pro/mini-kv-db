@@ -95,6 +95,7 @@ make check                          # fsck file data/test.db
 ```
 
 Đo trên máy Linux thuần và trả dần các món nợ của phase 0:
-[`docs/linux-baseline.md`](./docs/linux-baseline.md).
+[`docs/linux-baseline.md`](./docs/linux-baseline.md). Nợ P9-7 (đếm cache miss của hash join
+Postgres, WSL2 không có PMU): `./scripts/p97-hashjoin.sh`, xem [`docs/debts.md`](./docs/debts.md).
 
 Yêu cầu: Go 1.26+, Linux (dùng `pread`/`pwrite` và `posix_fadvise`).

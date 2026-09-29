@@ -26,3 +26,19 @@ services:
       MARIADB_DATABASE: lab
     command: ["--innodb-buffer-pool-size=256M"]
     ports: ["53307:3306"]
+  # Nợ P9-7: cùng Postgres, nhưng glibc malloc không trả bộ nhớ lại cho OS sau
+  # mỗi câu (không mmap riêng khối lớn, không trim đỉnh heap). Chỉ khác pg ở
+  # đúng một chỗ đó. mmap_threshold có trần 32MB (HEAP_MAX/2 trên 64-bit):
+  # đặt cao hơn thì glibc lặng lẽ bỏ qua. Không chạy mặc định:
+  #   docker compose -f reallab/docker-compose.yml --profile p97 up -d pgm
+  pgm:
+    image: postgres:17
+    container_name: rl-pgm
+    profiles: [p97]
+    environment:
+      POSTGRES_PASSWORD: lab
+      POSTGRES_DB: lab
+      GLIBC_TUNABLES: glibc.malloc.mmap_threshold=33554432:glibc.malloc.trim_threshold=4294967295
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "track_io_timing=on"]
+    ports: ["55433:5432"]
+    shm_size: 512mb
