@@ -786,14 +786,6 @@ từ 10.6, hay do cách đo (vòng chờ 100ms).
 Không làm nóng, không lấy trung vị: chỉ dùng được để xem thứ tự độ lớn. **Trả bằng:** gọi
 `estimate` hai lần, lấy lần sau (hoặc trung vị của 5 lần).
 
-### 📏 P9-6 · MySQL `flush_log_at_trx_commit=0` mất rất ít khi `kill -9`
-
-`reallab -work crash`: MySQL với `flush_log_at_trx_commit=0` + `sync_binlog=0` mất **6** commit đã báo
-OK qua 5 vòng, MariaDB với `flush_log_at_trx_commit=0` mất **9123**. Khi còn `sync_binlog=1` thì MySQL
-không mất gì (fsync của binlog che cho redo). **Nghi phạm:** luồng `log_writer` riêng của MySQL 8 ghi
-redo xuống OS liên tục thay vì mỗi giây một lần. **Trả bằng:** đếm `Innodb_os_log_written` theo thời
-gian ở chế độ `=0` trên cả hai DB; kỳ vọng MySQL ghi đều, MariaDB ghi theo nhịp 1 giây.
-
 ### 📏 P9-7 · Hash join tràn đĩa nhanh hơn trong RAM (Postgres)
 
 `blog/lab/10-explain-pg.sql` mục 6: 16 batch 268–291ms, 1 batch 344–366ms. **Giả thuyết:** bảng băm
@@ -819,6 +811,7 @@ kỳ vọng số cache miss của bản 1 batch cao hơn hẳn. Nếu đúng, xe
 | ⏳ P6-4 · `Txn.Scan` materialize cả kết quả | `db.Iter` (latch chỉ giữ **một bước** `Next()`) + `Txn.Scan` viết lại thành **merge join** của hai dòng đã sắp: cursor trên cây, và bản sao đã sắp của phần write set trong khoảng. Cùng khóa thì write set thắng (*read-your-own-writes*) | `BenchmarkScanLimit` 1423-1668 ns vs quét cả bảng ~9.9 ms = **5032x** (`go run ./cmd/idxlab -work stream`). Bản materialize cho tỉ số **1x** vì nó đọc cả khoảng trước khi gọi `fn` lần đầu. Và món nợ này hoá ra **chặn cả phase 7**: index scan là một phép truy cây **trong** callback của một phép duyệt cây, nên với `Range` cũ nó **tự khoá chết** — `TestIterCallbackCanReadBack` là bài test của đúng hình đó |
 | ⏳ P7-9 · Chưa có `ORDER BY` dùng index, chưa có `Filter` đẩy xuống | Thuộc tính vật lý bắt buộc (`req []SortKey`) **đi XUỐNG** qua `plan.build`, và `scan()` liệt kê thêm một đường "dùng index CHỈ để lấy thứ tự"; `Filter` đẩy xuống bằng `plan.opt.push` — cộng một luật **không có trong kế hoạch**: `plan.propagate` suy ra điều kiện qua phép bằng của join | `go run ./cmd/sqllab -work order`: bỏ được `Sort` = **2.87-3.12x** không LIMIT, nhưng **3284-3345x** với `LIMIT 10` — một **bậc**, không phải một hệ số, vì `Sort` là toán tử **CHẶN**. Và `-work pushdown`: **83.86x** (một bảng, điều kiện thành khoảng quét) / **45.35x** (thu vế build của join) / **18.53x** (suy ra qua phép bằng). Dòng thứ ba **trước** khi có `propagate` chỉ đo được **1.18x**, và chính con số ấy chỉ ra luật còn thiếu — lần đầu trong 8 phase số đo tìm ra thứ **CHƯA CÓ**. Món này còn tố oan tôi một lần: bản đầu hạ **mọi** khoảng thành `Filter` khi đường đi là seq scan (trực giác đúng với Postgres, nơi bảng là **heap**; sai ở đây, nơi hàng nằm **trong** cây pk) — **5100 hàng thay vì 105, 4.062ms thay vì 88µs = 46x**, và không test nào bắt được vì kết quả vẫn đúng |
 | 🔧 P3-0 · `victim()` quay vô hạn khi WAL rule chặn mọi ứng viên | đếm số lần bị chặn, hết một vòng frame thì `ErrNoFrame` | `go test -run TestWALRule -timeout 10s` trước khi sửa: `panic: test timed out after 10s`; sau khi sửa: PASS, `store.Writes = 0` |
+| 📏 P9-6 · MySQL `=0` + `sync_binlog=0` chỉ mất 6 commit khi `kill -9`, MariaDB mất 9123 | `reallab -work lograte`: đọc bộ đếm redo mỗi 5ms để đo khoảng giữa hai lần write(); thêm chế độ `innodb_log_writer_threads=OFF` vào `-work crash` | MySQL write() mỗi ≤6ms (luồng `log_writer`), MariaDB mỗi 1002ms. Tắt `log_writer` thì mất **3447** thay vì **6** (575x), khớp dự báo 767–844 mỗi lần kill. Và nó **tố oan một lần**: `Innodb_os_log_written` của MariaDB đếm LSN chứ không đếm byte đã ghi, nên lượt đầu báo MariaDB "ghi mỗi 5.6ms" |
 
 ---
 

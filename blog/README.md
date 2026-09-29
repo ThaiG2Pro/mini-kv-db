@@ -39,6 +39,7 @@ reallab/q.sh pg <<< "select version();"
 | 9 | [Planner đoán mò](09-planner.md) | Sao cùng một câu, hôm qua 10ms hôm nay 10 giây? | Thống kê lệch, tương quan, cũ | 7, 9 |
 | 10 | [Đọc `EXPLAIN` như người viết ra nó](10-explain.md) | `Hash Join`, `Sort`, `Batches`, `external merge` nghĩa là gì? | `EXPLAIN` của minidb vs Postgres; `LIMIT 10` chênh 221x | 8 |
 | 11 | [Bản đồ mang theo](11-ban-do-mang-theo.md) | Tổng kết: một câu `UPDATE` đi qua những đâu | — | — |
+| 12 | [Cùng một biến, hai database, chênh nhau 575 lần](12-ai-goi-write.md) | `flush_log_at_trx_commit=0` thật ra mất bao nhiêu? | Đếm nhịp `write()` của redo mỗi 5ms; tắt `log_writer` của MySQL: mất 6 → 3447 | 5, 9 |
 
 Số đo trong các bài lấy từ [`diary/phase9.md`](../diary/phase9.md) và các script ở [`lab/`](lab/), nơi có lệnh và output gốc.
 Máy đo là một laptop chạy WSL2 (i5-1235U), nên số tuyệt đối không giống máy chủ thật. Chỉ tỉ số là đáng tin.

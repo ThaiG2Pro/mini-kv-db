@@ -60,6 +60,12 @@ func crashModes(e *Engine) []crashMode {
 		ms = append(ms, crashMode{"flush_log_at_trx_commit=0 + sync_binlog=0",
 			[]string{`SET GLOBAL innodb_flush_log_at_trx_commit = 0`, `SET GLOBAL sync_binlog = 0`},
 			[]string{`SET GLOBAL innodb_flush_log_at_trx_commit = 1`, `SET GLOBAL sync_binlog = 1`}})
+		// Nợ P9-6: MySQL 8 có luồng log_writer riêng write() redo liên tục
+		// (-work lograte: mỗi ~6ms). Tắt luồng đó thì write() chỉ còn theo
+		// nhịp giây, và -work lograte dự báo mất ~1500 commit mỗi lần kill.
+		ms = append(ms, crashMode{"=0 + sync_binlog=0 + writer_threads=OFF",
+			[]string{`SET GLOBAL innodb_flush_log_at_trx_commit = 0`, `SET GLOBAL sync_binlog = 0`, `SET GLOBAL innodb_log_writer_threads = OFF`},
+			[]string{`SET GLOBAL innodb_flush_log_at_trx_commit = 1`, `SET GLOBAL sync_binlog = 1`, `SET GLOBAL innodb_log_writer_threads = ON`}})
 	}
 	return ms
 }

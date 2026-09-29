@@ -70,6 +70,7 @@ go run . -work pkorder                 # bảng 3
 go run . -work bloat                   # bảng 4
 go run . -work stats                   # bảng 5
 go run . -work crash -rounds 5         # bảng 6, ~4 phút, giết và khởi động lại container
+go run . -work lograte -db mysql,maria # bảng 7, ~15 giây
 for f in ../blog/lab/0[1235]*-pg.sql ../blog/lab/08-index-pg.sql ../blog/lab/10-explain-pg.sql; do ./q.sh pg $f; done
 docker compose down -v                 # dọn
 ```
@@ -862,11 +863,100 @@ flush_log_at_trx_commit=0 + sync_binlog=0     0/5       19304         6         
 (19304 so với 4268 commit đã báo OK) và **có mất dữ liệu**, nhưng chỉ 6 commit qua 5 vòng, so với
 9123 của MariaDB. Vậy fsync của binlog đúng là đã che cho redo ở chế độ `=0`, nhưng khi bỏ lớp
 che ấy, MySQL vẫn mất ít hơn MariaDB rất nhiều. Chưa biết vì sao (nợ P9-6). Nghi phạm là luồng
-`log_writer` riêng của MySQL 8, liên tục ghi redo xuống OS thay vì mỗi giây một lần.
+`log_writer` riêng của MySQL 8, liên tục ghi redo xuống OS thay vì mỗi giây một lần. **Đã xác
+nhận ở bảng 7.**
 
 Và lưu ý đã có từ phase 5: `kill -9` giết tiến trình chứ không giết page cache, nên chế độ
 `flush_log_at_trx_commit=2` (write mỗi commit, fsync mỗi giây) xanh ở đây nhưng vẫn mất dữ liệu
 khi mất điện thật.
+
+### 2026-09-29 — bảng 7: trả nợ P9-6, redo được write() theo nhịp nào
+
+Câu hỏi còn treo từ bảng 6: ở chế độ không chờ log, sau khi đã tắt cả `sync_binlog`, vì sao MySQL
+chỉ mất 6 commit trong khi MariaDB mất 9123? `kill -9` chỉ xoá phần redo còn nằm trong RAM của
+tiến trình, tức phần **chưa được write()**. Nên số commit mất mỗi lần kill phải xấp xỉ bằng
+*tốc độ commit × độ dài khoảng thời gian từ lần write() gần nhất*. Bài `reallab/lograte.go` đo
+độ dài khoảng đó: một kết nối chèn liên tục, kết nối khác đọc bộ đếm redo mỗi 5ms và ghi lại
+những lúc bộ đếm nhảy.
+
+**Kỳ vọng viết trước:** MySQL nhảy liên tục vì có luồng `log_writer` riêng; MariaDB nhảy mỗi
+giây một lần (`innodb_flush_log_at_timeout=1`).
+
+Lượt đầu đọc `Innodb_os_log_written` trên cả hai DB:
+
+```console
+$ go run . -work lograte -db mysql,maria
+db      chế độ                                          commit/s  số write  khoảng p50  khoảng max
+mysql   =0 + sync_binlog=0                                  4077       514       5.8ms       7.2ms
+mysql   =0 + sync_binlog=0 + log_writer_threads=OFF         4194         8     172.8ms     826.9ms
+maria   flush_log_at_trx_commit=0                           4366       526       5.6ms       7.4ms
+```
+
+MariaDB cũng "ghi mỗi 5.6ms", nhưng nếu vậy thì nó không thể mất 9123 commit. Theo quy tắc 5, mình
+nghi bộ đo trước. Lấy mẫu tay trong lúc chèn:
+
+```console
+Innodb_lsn_current 3602546893  Innodb_lsn_flushed 3601694282  Innodb_os_log_written 3789950  38.077
+Innodb_lsn_current 3603397116  Innodb_lsn_flushed 3601694282  Innodb_os_log_written 4640173  38.495
+Innodb_lsn_current 3604430049  Innodb_lsn_flushed 3603725140  Innodb_os_log_written 5673106  38.897
+```
+
+Giữa hai mẫu đầu, `Innodb_os_log_written` tăng 850223 byte, **đúng bằng** mức tăng của
+`Innodb_lsn_current` (850223 byte). Trên MariaDB bộ đếm này đếm redo được *sinh ra*, không đếm
+redo được *ghi*. Bộ đếm đúng là `Innodb_lsn_flushed`, nhảy khoảng mỗi giây một lần. MariaDB mở
+redo với `O_DIRECT` (`innodb_log_file_buffering=OFF`), nên write() và xuống đĩa là cùng một lần.
+Sửa bộ đo để đọc `Innodb_lsn_flushed` trên MariaDB, rồi chạy lại hai lượt:
+
+```console
+$ go run . -work lograte -db mysql,maria        # ×2
+db      chế độ                                          commit/s  số write  khoảng p50  khoảng max dự báo mất/kill
+mysql   =0 + sync_binlog=0                                  3819       508       5.9ms       7.6ms            11
+mysql   =0 + sync_binlog=0 + log_writer_threads=OFF         2516         8     184.2ms     818.6ms           844
+maria   flush_log_at_trx_commit=0                           2897         3    1001.7ms    1003.2ms          1363
+
+mysql   =0 + sync_binlog=0                                  2425       473       6.2ms      19.5ms             8
+mysql   =0 + sync_binlog=0 + log_writer_threads=OFF         2295         9     189.7ms     799.4ms           767
+maria   flush_log_at_trx_commit=0                           2001         3    1002.6ms    1007.1ms           857
+```
+
+"Dự báo mất/kill" = `rate × Σg² / (2·Σg)`. Lần kill rơi vào khoảng dài g với xác suất tỉ lệ với g,
+và trong khoảng đó trung bình mất g/2. Khoảng 5.9ms của MySQL là giới hạn của nhịp lấy mẫu: MySQL
+ghi *ít nhất* dày chừng đó.
+
+Kiểm tra nhân quả: tắt luồng ghi log (`innodb_log_writer_threads=OFF`) thì dự báo nhảy từ ~10 lên
+~800 commit mỗi lần kill. Thêm chế độ đó vào `-work crash` rồi giết thật:
+
+```console
+$ go run . -work crash -db mysql 2>&1 | grep -v packets.go     # lượt 2; lượt 1: OFF mất 2986 / 22559
+chế độ                                    vòng   đã báo OK       mất      thừa   khởi động
+mặc định (flush_log_at_trx_commit=1)       5/5        3464         0         4        2.5s
+flush_log_at_trx_commit=2                  5/5        4715         0         4        2.4s
+flush_log_at_trx_commit=0                  5/5        5070         0         5        2.4s
+flush_log_at_trx_commit=0 + sync_binlog=0     0/5       24339         6         0        2.6s
+=0 + sync_binlog=0 + writer_threads=OFF     0/5       21242      3447         0        2.6s
+```
+
+**Đọc kết quả:**
+
+| | dự báo mất / kill | đo được mất / kill |
+|---|---|---|
+| MySQL, có `log_writer` | 8–11 | 6 / 5 = **1.2** (hai lượt đều ra 6) |
+| MySQL, `log_writer_threads=OFF` | 767–844 | 2986 / 5 = 597, 3447 / 5 = **689** |
+| MariaDB | 857–1363 ở 2000–2900 commit/s | 9123 / 5 = **1825** ở ~4300 commit/s (bảng 6) |
+
+Đúng bậc ở cả ba dòng. Chỉ bằng một biến, MySQL chuyển từ "gần như không mất" sang "mất như
+MariaDB": 3447 / 6 = **575x**. Vậy P9-6 đã trả. Khác biệt nằm ở **ai** gọi write(). MySQL 8 có luồng
+`log_writer` riêng, ghi redo từ log buffer xuống OS ngay khi có dữ liệu mới, bất kể
+`flush_log_at_trx_commit`. Biến này chỉ quyết định commit có **chờ** hay không. MariaDB không có
+luồng đó: ở `=0`, redo nằm trong log buffer cho tới lần ghi mỗi giây của master thread.
+
+Hai điều giữ lại cho blog:
+1. `kill -9` đo được **write()**, không đo được **fsync**. MySQL `=0` mất rất ít khi tiến trình
+   chết, nhưng mất điện thật vẫn mất tới 1 giây dữ liệu, vì luồng `log_flusher` chỉ fsync mỗi giây.
+   Tài liệu của MySQL nói đúng về mất điện; thí nghiệm này chỉ cho thấy tiến trình chết là một
+   trường hợp nhẹ hơn.
+2. Cùng tên biến, cùng tên bộ đếm, hai DB cùng họ InnoDB mà nghĩa khác nhau:
+   `Innodb_os_log_written` của MariaDB đếm LSN, còn của MySQL đếm byte đã write().
 
 ### 2026-09-29 — các thí nghiệm nhỏ cho blog (bài 1, 2, 3, 5, 8, 10)
 
@@ -919,6 +1009,8 @@ Ba chỗ đo sai hoặc bất ngờ:
 | Thêm thống kê thì ước lượng chỉ có thể tốt lên | MariaDB: trước histogram ước lượng `city AND country` đúng (10030/10030) vì bỏ qua `country`; sau histogram sai **10x** (1001/10030) vì nhân như thể độc lập | `go run . -work stats`, khối "sau khi chữa" của maria | Không sửa; đây là hành vi của DB, ghi vào blog bài 9 |
 | MySQL `innodb_flush_log_at_trx_commit=0` + `kill -9` ⇒ mất dữ liệu, như MariaDB | MySQL 8 bật binlog với `sync_binlog=1`, và fsync của binlog che cho redo; tắt cả hai thì mới mất, và chỉ 6 commit (MariaDB mất 9123) | `go run . -work crash`: MySQL `=0` 5/5 xanh; thêm `sync_binlog=0` thì 0/5, mất 6 | Thêm chế độ `sync_binlog=0` cho MySQL; nợ P9-6 cho phần còn chưa giải thích |
 | *(bug của bộ đo)* `SELECT count(*)` hai lần cách nhau 1.5s là làm nóng được bảng | Ở MySQL 8, `count(*)` không `WHERE` đi đường đọc song song; chỉ 605/2051 page lên young | `INNODB_BUFFER_PAGE_LRU`: `IS_OLD` YES 1446 / NO 605; phản chứng không tách được hai cấu hình | Làm nóng bằng `SELECT sum(length(pad))`: 2050/2051 young |
+| *(bug của bộ đo)* `Innodb_os_log_written` đếm byte redo đã write(), trên cả hai DB | Đúng trên MySQL. Trên MariaDB 11.8 nó tăng đúng bằng `Innodb_lsn_current`, tức đếm redo được sinh ra | Lượt đầu bảng 7: MariaDB "ghi mỗi 5.6ms" dù mất 9123 commit; mẫu tay: cả hai bộ đếm cùng tăng 850223 | Đọc `Innodb_lsn_flushed` trên MariaDB: 3 lần mỗi 3s |
+| MySQL mất ít hơn MariaDB ở `=0` vì một cơ chế lạ nào đó của MySQL 8 | Chính là luồng `log_writer`: tắt nó (`innodb_log_writer_threads=OFF`) thì mất 689 mỗi lần kill thay vì 1.2 | `go run . -work crash -db mysql`: 6 so với 3447 commit mất / 5 vòng | Trả nợ P9-6; thêm chế độ vào `crash.go` |
 | Hash join tràn đĩa thì chậm hơn chạy trong RAM | Postgres: 16 batch **nhanh hơn** 1 batch 1.2–1.3x (268–291 vs 344–366ms) | `blog/lab/10-explain-pg.sql` mục 6, 3 lượt | Không sửa; ghi vào blog bài 10, nợ P9-7 |
 
 ---
@@ -1001,5 +1093,5 @@ lệch.
 - [ ] 📏 P9-3 · Chưa đo UUID trên Postgres khi riêng index PK lớn hơn RAM (cần giới hạn cả page cache: `docker --memory`)
 - [ ] 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x trên cùng lượng việc: chưa biết vì sao
 - [ ] 🔧 P9-5 · Cột `ms` của bảng 5 là một lần `EXPLAIN ANALYZE`, không làm nóng, không lấy trung vị
-- [ ] 📏 P9-6 · MySQL `flush_log_at_trx_commit=0` + `sync_binlog=0` chỉ mất 6 commit khi `kill -9`, MariaDB mất 9123: chưa biết vì sao
+- [x] 📏 P9-6 · MySQL `flush_log_at_trx_commit=0` + `sync_binlog=0` chỉ mất 6 commit khi `kill -9`, MariaDB mất 9123: **trả ở bảng 7**, do luồng `log_writer` (tắt nó thì mất 3447)
 - [ ] 📏 P9-7 · Hash join 16 batch nhanh hơn 1 batch 1.2–1.3x trên Postgres: giả thuyết L3 cache, chưa đo (cần `perf stat -e cache-misses`)

@@ -50,9 +50,9 @@ flush_log_at_trx_commit=0                  0/5       43427      9123         0  
 Hai dòng MySQL đáng để ý. Ở `flush_log_at_trx_commit=0`, MySQL không mất gì, trong khi MariaDB (cùng
 engine InnoDB) mất 9123. Khác biệt nằm ở **binlog**: MySQL 8 bật binlog mặc định với
 `sync_binlog=1` (fsync binlog ở mỗi commit), còn MariaDB tắt binlog. Tắt nốt fsync của binlog thì
-MySQL cũng bắt đầu mất dữ liệu (6 commit), và nhanh hơn 4.5 lần. Vì sao MySQL mất ít như vậy so
-với MariaDB, mình chưa chứng minh được. Có thể là do MySQL 8 có một luồng riêng liên tục ghi redo
-xuống OS, nhưng đây mới chỉ là giả thuyết.
+MySQL cũng bắt đầu mất dữ liệu (6 commit), và nhanh hơn 4.5 lần. Vì sao MySQL vẫn mất ít hơn
+MariaDB tới 1500 lần? Vì MySQL 8 có một luồng riêng ghi redo xuống OS mỗi vài mili giây. Tắt luồng
+đó thì MySQL mất 3447 commit. [Bài 12](12-ai-goi-write.md) đo chuyện này.
 
 **Một lưu ý quan trọng:** `kill -9` giết **tiến trình**, không giết **page cache của hệ điều hành**.
 Nên thí nghiệm này chỉ kiểm được *"log đã được giao cho hệ điều hành trước khi DB báo OK"*. Nó
@@ -185,7 +185,7 @@ còn nguyên ([`diary/phase5.md`](../diary/phase5.md)).
    là thật: 2400 và 9123 commit đã báo thành công.
 3. **Đừng giả định MySQL và MariaDB giống nhau.** Cùng một biến `innodb_flush_log_at_trx_commit=0`,
    MySQL (có binlog) không mất gì còn MariaDB (không có binlog) mất 9123 commit. Mặc định khác
-   nhau đổi luôn cả hành vi khi có sự cố.
+   nhau đổi luôn cả hành vi khi có sự cố Chi tiết ở [bài 12](12-ai-goi-write.md).
 4. **WAL tăng vọt sau mỗi checkpoint** vì full page write. Nếu dung lượng WAL hay độ trễ
    replication là vấn đề, xem lại `checkpoint_timeout` / `max_wal_size`: checkpoint thưa hơn thì
    ít full page write hơn (đổi lại, recovery lâu hơn).
