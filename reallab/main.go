@@ -1,13 +1,14 @@
 // reallab là bài lab của phase 9: lấy từng con số đã đo trên minidb, đặt câu
 // hỏi y hệt cho Postgres, MySQL (InnoDB) và MariaDB (InnoDB fork), rồi so.
 //
-// Năm bảng, năm câu hỏi:
+// Sáu bảng, sáu câu hỏi:
 //
 //	-work breakeven : index scan thắng seq scan tới độ chọn lọc nào (phase 7: 36.8%)
 //	-work anomaly   : anomaly nào lọt ở mức isolation nào (phase 6: bảng 5×4)
 //	-work pkorder   : PK tăng dần vs ngẫu nhiên đắt khác nhau bao nhiêu (phase 4: 33x)
 //	-work bloat     : một transaction chạy lâu làm phình cái gì (phase 6: ChainStats)
 //	-work stats     : planner chọn sai khi thống kê lệch (phase 7: nợ P7-6)
+//	-work crash     : kill -9 giữa lúc ghi, có mất commit nào không (phase 5: crashlab)
 //
 // Cần lab đang chạy: `docker compose -f reallab/docker-compose.yml up -d`.
 package main
@@ -62,10 +63,11 @@ func open(name string) (*Engine, error) {
 
 func main() {
 	var (
-		work   = flag.String("work", "all", "breakeven | anomaly | pkorder | bloat | stats | all")
+		work   = flag.String("work", "all", "breakeven | anomaly | pkorder | bloat | stats | crash | all")
 		dbs    = flag.String("db", "pg,mysql,maria", "danh sách DB, cách nhau bằng dấu phẩy")
 		rows   = flag.Int("rows", 1_000_000, "số hàng cho breakeven / stats")
 		repeat = flag.Int("repeat", 5, "số lần chạy mỗi truy vấn, lấy trung vị")
+		rounds = flag.Int("rounds", 5, "số vòng kill -9 mỗi chế độ (crash)")
 	)
 	flag.Parse()
 
@@ -92,6 +94,7 @@ func main() {
 	run("pkorder", func() error { return workPKOrder(es) })
 	run("bloat", func() error { return workBloat(es) })
 	run("stats", func() error { return workStats(es, *rows) })
+	run("crash", func() error { return workCrash(es, *rounds) })
 	if bad {
 		os.Exit(1)
 	}

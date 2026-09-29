@@ -27,17 +27,18 @@ reallab/q.sh pg <<< "select version();"
 
 | # | Bài | Câu hỏi của bạn | Thí nghiệm | Phase |
 |---|---|---|---|---|
-| 0 | [Database trên máy bạn là gì?](00-ban-do.md) | "Postgres" thật ra là mấy file và mấy tiến trình? | Mở thư mục dữ liệu, tìm đúng file của một bảng | — |
-| 1 | Vì sao `COMMIT` chậm? | Sao insert từng dòng chậm hơn insert theo lô cả trăm lần? | `fsync` và group commit | 0 |
-| 2 | Một hàng nằm ở đâu? | `ctid` là gì, sao `UPDATE` lại làm nó đổi? | Soi page bằng `pageinspect` | 1-2 |
-| 3 | RAM của database | `shared_buffers` / buffer pool để làm gì, vì sao một câu `SELECT *` làm chậm cả hệ thống? | Hit ratio, sequential flooding | 3 |
-| 4 | [Vì sao UUID làm chậm insert](04-uuid.md) | Đổi PK sang UUIDv4 thì InnoDB chậm 8-11x, Postgres gần như không sao. Vì sao? | Bảng 3 của phase 9 | 4, 9 |
-| 5 | Vì sao mất điện không mất dữ liệu? | WAL / redo log là gì, `kill -9` thì sao? | 200 lần `kill -9` | 5 |
-| 6 | Isolation level không phải là định nghĩa | Sao code chạy đúng trên Postgres lại mất tiền trên MySQL? | Bảng 5 anomaly × 4 mức × 3 DB | 6, 9 |
-| 7 | Transaction quên `COMMIT` | Một cửa sổ `psql` bỏ quên làm hỏng cả DB thế nào? | Bloat vs history list | 6, 9 |
-| 8 | Khi nào index không được dùng | Có index rồi mà sao planner vẫn quét cả bảng? | Điểm hoà vốn 4.7% / 4.9% / 7.0% | 7, 9 |
-| 9 | Planner đoán mò | Sao cùng một câu, hôm qua 10ms hôm nay 10 giây? | Thống kê lệch, cũ, tương quan | 7, 9 |
-| 10 | Đọc `EXPLAIN` như người viết ra nó | Các dòng `Hash Join`, `Sort`, `Bitmap Heap Scan` nghĩa là gì? | `EXPLAIN` của minidb vs Postgres | 8 |
-| 11 | Bản đồ mang theo | Tổng kết: chuyện gì xảy ra từ lúc gõ `SELECT` tới lúc có kết quả | — | — |
+| 0 | [Database trên máy bạn là gì?](00-ban-do.md) | "Postgres" thật ra là mấy file và mấy tiến trình? | Mở thư mục dữ liệu, tìm đúng file và đúng byte của một hàng | 1 |
+| 1 | [Vì sao `COMMIT` chậm?](01-commit.md) | Sao insert từng dòng chậm hơn insert theo lô cả trăm lần? | 5000 INSERT: commit từng dòng chậm hơn 170–310x; 64 client chia nhau 1 fsync cho 27 commit | 0 |
+| 2 | [Một hàng nằm ở đâu?](02-page.md) | `ctid` là gì, sao `UPDATE` làm nó đổi, `VACUUM` làm gì trong page? | Soi page bằng `pageinspect`: HOT update, redirect, compact | 2 |
+| 3 | [RAM của database](03-buffer-pool.md) | Một câu `SELECT *` có đuổi dữ liệu nóng ra khỏi RAM không? | Ring buffer của Postgres; tắt `innodb_old_blocks_time` thì mất sạch | 3 |
+| 4 | [Vì sao UUID làm chậm insert](04-uuid.md) | Sao UUIDv4 làm InnoDB chậm 6.5–11x mà Postgres gần như không sao? | 2 triệu hàng, khoá ngẫu nhiên vs tăng dần | 4, 9 |
+| 5 | [Vì sao mất điện không mất dữ liệu?](05-wal.md) | WAL / redo log là gì, `kill -9` thì sao? | `kill -9` giữa lúc ghi ×15; full page write 8KB vs 176 byte | 5, 9 |
+| 6 | [Isolation level không phải là định nghĩa](06-isolation.md) | Sao code chạy đúng trên Postgres lại mất tiền trên MySQL? | 5 anomaly × 4 mức × 3 DB | 6, 9 |
+| 7 | [Transaction quên `COMMIT`](07-long-txn.md) | Một cửa sổ `psql` bỏ quên làm hỏng cả DB thế nào? | Heap phình 11x vs undo chỉ phạt phiên cũ | 6, 9 |
+| 8 | [Khi nào index không được dùng](08-index.md) | Có index rồi mà sao vẫn quét cả bảng? | Năm cách viết `WHERE` làm mất index; hoà vốn 4.7 / 4.9 / 7.0% | 7, 9 |
+| 9 | [Planner đoán mò](09-planner.md) | Sao cùng một câu, hôm qua 10ms hôm nay 10 giây? | Thống kê lệch, tương quan, cũ | 7, 9 |
+| 10 | [Đọc `EXPLAIN` như người viết ra nó](10-explain.md) | `Hash Join`, `Sort`, `Batches`, `external merge` nghĩa là gì? | `EXPLAIN` của minidb vs Postgres; `LIMIT 10` chênh 221x | 8 |
+| 11 | [Bản đồ mang theo](11-ban-do-mang-theo.md) | Tổng kết: một câu `UPDATE` đi qua những đâu | — | — |
 
-Số đo trong các bài lấy từ [`diary/phase9.md`](../diary/phase9.md), nơi có lệnh và output gốc.
+Số đo trong các bài lấy từ [`diary/phase9.md`](../diary/phase9.md) và các script ở [`lab/`](lab/), nơi có lệnh và output gốc.
+Máy đo là một laptop chạy WSL2 (i5-1235U), nên số tuyệt đối không giống máy chủ thật. Chỉ tỉ số là đáng tin.

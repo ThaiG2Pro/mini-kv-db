@@ -786,6 +786,21 @@ từ 10.6, hay do cách đo (vòng chờ 100ms).
 Không làm nóng, không lấy trung vị: chỉ dùng được để xem thứ tự độ lớn. **Trả bằng:** gọi
 `estimate` hai lần, lấy lần sau (hoặc trung vị của 5 lần).
 
+### 📏 P9-6 · MySQL `flush_log_at_trx_commit=0` mất rất ít khi `kill -9`
+
+`reallab -work crash`: MySQL với `flush_log_at_trx_commit=0` + `sync_binlog=0` mất **6** commit đã báo
+OK qua 5 vòng, MariaDB với `flush_log_at_trx_commit=0` mất **9123**. Khi còn `sync_binlog=1` thì MySQL
+không mất gì (fsync của binlog che cho redo). **Nghi phạm:** luồng `log_writer` riêng của MySQL 8 ghi
+redo xuống OS liên tục thay vì mỗi giây một lần. **Trả bằng:** đếm `Innodb_os_log_written` theo thời
+gian ở chế độ `=0` trên cả hai DB; kỳ vọng MySQL ghi đều, MariaDB ghi theo nhịp 1 giây.
+
+### 📏 P9-7 · Hash join tràn đĩa nhanh hơn trong RAM (Postgres)
+
+`blog/lab/10-explain-pg.sql` mục 6: 16 batch 268–291ms, 1 batch 344–366ms. **Giả thuyết:** bảng băm
+21.6MB > L3 12MB. **Trả bằng:** `perf stat -e cache-misses` trên tiến trình backend cho hai cấu hình;
+kỳ vọng số cache miss của bản 1 batch cao hơn hẳn. Nếu đúng, xem minidb có hưởng được điều đó không
+(minidb tràn đĩa đắt 2.1x, phase 8).
+
 ## Đã trả
 
 | Món | Trả bằng | Bằng chứng |

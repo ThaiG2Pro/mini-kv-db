@@ -56,7 +56,8 @@ Phase này cũng là nguyên liệu cho series blog (xem `blog/`).
 ## Deliverable
 
 `go run ./reallab` (module riêng, để minidb vẫn không có dependency nào) in năm bảng, mỗi bảng
-một câu hỏi ở trên, chạy trên cả ba DB.
+một câu hỏi ở trên, chạy trên cả ba DB. Bảng thứ sáu (`-work crash`, `kill -9`) và các script
+trong `blog/lab/` được thêm lúc viết series blog.
 
 ## Reproduce toàn bộ phase
 
@@ -68,6 +69,8 @@ go run . -work anomaly                 # bảng 2
 go run . -work pkorder                 # bảng 3
 go run . -work bloat                   # bảng 4
 go run . -work stats                   # bảng 5
+go run . -work crash -rounds 5         # bảng 6, ~4 phút, giết và khởi động lại container
+for f in ../blog/lab/0[1235]*-pg.sql ../blog/lab/08-index-pg.sql ../blog/lab/10-explain-pg.sql; do ./q.sh pg $f; done
 docker compose down -v                 # dọn
 ```
 
@@ -797,6 +800,110 @@ dive) nhưng quay về giả định đều khi không thể. Bài học cho ng�
 nhiên chậm, việc đầu tiên là so **ước lượng với thực tế** trong `EXPLAIN ANALYZE`. Lệch 10x trở
 lên thì planner đang đoán mò, và chỗ cần sửa là thống kê, không phải câu SQL.
 
+### 2026-09-29 — bảng 6: `kill -9` giữa lúc ghi (thêm khi viết blog bài 5)
+
+Cùng câu hỏi với `cmd/crashlab` của phase 5, trên DB thật (`reallab/crash.go`). Một goroutine chèn
+`id = 1, 2, …` mỗi câu một commit, và ghi lại id lớn nhất đã được báo OK. Sau 1–3 giây,
+`docker kill -s KILL`. Khởi động lại rồi đếm: "mất" = id ≤ lastAck mà không còn trong bảng (phải
+bằng 0), "thừa" = id > lastAck mà có trong bảng (câu đang bay, hợp lệ). Mỗi DB có một chế độ
+"không chờ log", đóng vai `crashlab -nowrite`: nó **phải** làm mất dữ liệu.
+
+```console
+$ go run . -work crash -rounds 5          # (lọc bỏ log "unexpected EOF" của driver mysql)
+== 6. kill -9 giữa lúc ghi, 5 vòng mỗi chế độ ==
+
+-- pg
+chế độ                                    vòng   đã báo OK       mất      thừa   khởi động
+mặc định (synchronous_commit=on)           5/5       12246         0         2       800ms
+synchronous_commit=off                     0/5       34302      2400         0       600ms
+
+-- mysql
+chế độ                                    vòng   đã báo OK       mất      thừa   khởi động
+mặc định (flush_log_at_trx_commit=1)       5/5        2515         0         3        4.1s
+flush_log_at_trx_commit=2                  5/5        4397         0         4        2.8s
+flush_log_at_trx_commit=0                  5/5        2847         0         5        2.9s
+
+-- maria
+chế độ                                    vòng   đã báo OK       mất      thừa   khởi động
+mặc định (flush_log_at_trx_commit=1)       5/5        8879         0         4          4s
+flush_log_at_trx_commit=2                  5/5       23878         0         1          2s
+flush_log_at_trx_commit=0                  0/5       43427      9123         0        2.7s
+```
+
+**Đọc kết quả:** chế độ mặc định giữ đúng lời hứa ở cả ba DB (15/15). Phản chứng đỏ đúng chỗ ở
+Postgres (`synchronous_commit=off` mất 2400) và MariaDB (`flush_log_at_trx_commit=0` mất 9123).
+**MySQL ở `flush_log_at_trx_commit=0` thì không mất gì**, và tốc độ ghi cũng thấp ngang chế độ mặc
+định. Theo quy tắc 5, đây là chỗ phải hỏi: phép phản chứng không đỏ thì hoặc bộ đo sai, hoặc có
+một cơ chế khác đang che.
+
+```console
+$ echo "SELECT @@log_bin, @@sync_binlog, @@innodb_flush_log_at_trx_commit;" | ./q.sh mysql   # rồi maria
+mysql: | 1 | 1 | 1 |
+maria: | 0 | 0 | 1 |
+```
+
+MySQL 8 bật binlog với `sync_binlog=1`, MariaDB không bật binlog. Giả thuyết: có binlog thì commit
+là 2PC, và bước flush của binlog group commit ghi redo xuống OS bất kể `flush_log_at_trx_commit`.
+Thêm một chế độ tắt luôn cả `sync_binlog`:
+
+```console
+$ go run . -work crash -rounds 5 -db mysql
+== 6. kill -9 giữa lúc ghi, 5 vòng mỗi chế độ ==
+
+-- mysql
+chế độ                                    vòng   đã báo OK       mất      thừa   khởi động
+mặc định (flush_log_at_trx_commit=1)       5/5        3862         0         1        2.2s
+flush_log_at_trx_commit=2                  5/5        5944         0         4        2.3s
+flush_log_at_trx_commit=0                  5/5        4268         0         4        2.9s
+flush_log_at_trx_commit=0 + sync_binlog=0     0/5       19304         6         0        2.9s
+```
+
+**Đọc kết quả:** giả thuyết chỉ đúng một nửa. Tắt fsync của binlog thì tốc độ tăng gấp 4.5 lần
+(19304 so với 4268 commit đã báo OK) và **có mất dữ liệu**, nhưng chỉ 6 commit qua 5 vòng, so với
+9123 của MariaDB. Vậy fsync của binlog đúng là đã che cho redo ở chế độ `=0`, nhưng khi bỏ lớp
+che ấy, MySQL vẫn mất ít hơn MariaDB rất nhiều. Chưa biết vì sao (nợ P9-6). Nghi phạm là luồng
+`log_writer` riêng của MySQL 8, liên tục ghi redo xuống OS thay vì mỗi giây một lần.
+
+Và lưu ý đã có từ phase 5: `kill -9` giết tiến trình chứ không giết page cache, nên chế độ
+`flush_log_at_trx_commit=2` (write mỗi commit, fsync mỗi giây) xanh ở đây nhưng vẫn mất dữ liệu
+khi mất điện thật.
+
+### 2026-09-29 — các thí nghiệm nhỏ cho blog (bài 1, 2, 3, 5, 8, 10)
+
+Mỗi bài blog có một script trong `blog/lab/`. Output đầy đủ nằm ngay trong bài; ở đây chỉ ghi các
+con số chốt và những chỗ đo sai.
+
+| Bài | Lệnh | Con số chốt |
+|---|---|---|
+| 1 | `reallab/q.sh pg blog/lab/01-commit-pg.sql` ×2 | 5000 INSERT: commit từng dòng 2687–2723ms, một commit 8.6–10.9ms (**250–310x**); `synchronous_commit=off` 16.5–17.9ms |
+| 1 | `reallab/q.sh mysql blog/lab/01-commit-mysql.sql` ×2 | 10146–13106ms vs 59–61ms (**170–215x**); 1000 commit = 1158 fsync redo + 1000 thao tác sync binlog |
+| 1 | `pgbench -f ins.sql -c {1,64}` + `pg_stat_wal.wal_sync` | 1 client: 8194 commit / 8194 fsync; 64 client: 72578 commit / 2643 fsync = **27.5 commit mỗi fsync** |
+| 2 | `reallab/q.sh pg blog/lab/02-page-pg.sql` | `UPDATE` đổi ctid (0,2)→(0,4); `VACUUM`: ô 2 thành REDIRECT, ô 3 UNUSED, ô 4 dời 8048→8120 mà giữ số ô; index vẫn trỏ (0,2); `n_tup_hot_upd = 1` |
+| 3 | `reallab/q.sh pg blog/lab/03-buffer-pg.sql` | quét 51776 page của `big`, `big` vẫn chỉ chiếm 1600 buffer; `hot` còn 3460/3456 (ring buffer) |
+| 3 | `blog/lab/03-buffer-mysql-run.sql` với `innodb_old_blocks_time` = 1000 / 0 | page nóng sau khi quét 590MB: **2050 → 2050** / **2050 → 0** |
+| 5 | `reallab/q.sh pg blog/lab/05-wal-pg.sql` + `pg_waldump` | lần chạm đầu sau checkpoint 8216 byte WAL (FPW 8073) vs lần sau 176 byte = **46.7x** |
+| 8 | `blog/lab/08-index-{pg,mysql}.sql` | `age = 30` trên index `(city, age)`: Postgres đọc cả index (175 page vs 2), MySQL quét cả bảng; `LIKE 'x%'` trên Postgres `en_US.utf8` cần `text_pattern_ops`; MySQL `varchar = 77` quét 199526 hàng |
+| 10 | `reallab/q.sh pg blog/lab/10-explain-pg.sql` | `LIMIT 10` có index 0.337ms vs top-N heapsort 74.6ms (**221x**); sort tràn đĩa 8.5MB chỉ chậm 2% |
+| 10 | hash join tự nối `ev`, `work_mem` 1MB vs 256MB, ×3 | 16 batch 268–291ms vs 1 batch 344–366ms: **tràn đĩa nhanh hơn 1.2–1.3x** |
+
+Ba chỗ đo sai hoặc bất ngờ:
+
+1. **`count(*)` không làm nóng bảng trong InnoDB.** Lần đầu làm nóng bảng `hot` bằng hai lần
+   `SELECT count(*)`, rồi quét `big`: `hot` bị đuổi sạch ở **cả hai** cấu hình
+   `innodb_old_blocks_time`, tức phép phản chứng không phân biệt được gì. Soi
+   `INNODB_BUFFER_PAGE_LRU` thì chỉ 605/2051 page của `hot` nằm ở vùng young. Đổi câu làm nóng
+   thành `SELECT sum(length(pad))` thì 2050/2051 page lên young, và phép phản chứng tách được hai
+   cấu hình. `count(*)` không `WHERE` ở MySQL 8 đi qua bộ đọc song song
+   (`innodb_parallel_read_threads = 4`), và trong thí nghiệm này, đường đọc đó không đẩy page lên
+   vùng young.
+2. **Postgres không suy ra `ev.kind < 5` từ `ev.kind = dim.kind AND dim.kind < 5`.** Equivalence
+   class của Postgres chỉ suy ra qua phép bằng. minidb (`plan.propagate`) suy ra được cả bất đẳng
+   thức. Đây là một chỗ minidb làm **nhiều hơn** Postgres.
+3. **Hash join tràn đĩa nhanh hơn hash join trong RAM.** Lặp lại ổn định qua 3 lượt. Giả thuyết:
+   bảng băm 21.6MB lớn hơn L3 (12MB) của i5-1235U, còn mỗi batch chỉ 1.6MB; file tạm nằm trong page
+   cache nên gần như không tốn I/O. Chưa chứng minh (nợ P9-7). Nó ngược với minidb, nơi tràn đĩa
+   đắt 2.1x (phase 8).
+
 ---
 
 ## Giả thuyết sai
@@ -810,6 +917,9 @@ lên thì planner đang đoán mò, và chỗ cần sửa là thống kê, khôn
 | *(bug của bộ đo)* History list length đếm số version cũ còn giữ | Nó đếm số **transaction** đã commit mà undo chưa dọn. 10 câu `UPDATE` cả bảng thì ra ~10, dù có 1 triệu version cũ | Lượt đầu bảng 4: history list lên tới **21** sau 1 triệu hàng bị cập nhật | Cập nhật bằng 100 transaction × 1000 hàng mỗi vòng: history list ra 1009 |
 | *(bug của bộ đo)* `INSERT … SELECT … FROM (SELECT RAND() r1 …) s` gọi `RAND()` một lần mỗi hàng | MySQL merge derived table vào câu ngoài, nên mỗi lần nhắc `r1` là một lần gọi `RAND()` mới | MySQL: `'pending'` = 20056 (2%), `city='c7' AND country='k8'` = 991 hàng; MariaDB cùng câu cho 9965 và 0 | `LIMIT 18446744073709551615` trong derived table |
 | Thêm thống kê thì ước lượng chỉ có thể tốt lên | MariaDB: trước histogram ước lượng `city AND country` đúng (10030/10030) vì bỏ qua `country`; sau histogram sai **10x** (1001/10030) vì nhân như thể độc lập | `go run . -work stats`, khối "sau khi chữa" của maria | Không sửa; đây là hành vi của DB, ghi vào blog bài 9 |
+| MySQL `innodb_flush_log_at_trx_commit=0` + `kill -9` ⇒ mất dữ liệu, như MariaDB | MySQL 8 bật binlog với `sync_binlog=1`, và fsync của binlog che cho redo; tắt cả hai thì mới mất, và chỉ 6 commit (MariaDB mất 9123) | `go run . -work crash`: MySQL `=0` 5/5 xanh; thêm `sync_binlog=0` thì 0/5, mất 6 | Thêm chế độ `sync_binlog=0` cho MySQL; nợ P9-6 cho phần còn chưa giải thích |
+| *(bug của bộ đo)* `SELECT count(*)` hai lần cách nhau 1.5s là làm nóng được bảng | Ở MySQL 8, `count(*)` không `WHERE` đi đường đọc song song; chỉ 605/2051 page lên young | `INNODB_BUFFER_PAGE_LRU`: `IS_OLD` YES 1446 / NO 605; phản chứng không tách được hai cấu hình | Làm nóng bằng `SELECT sum(length(pad))`: 2050/2051 young |
+| Hash join tràn đĩa thì chậm hơn chạy trong RAM | Postgres: 16 batch **nhanh hơn** 1 batch 1.2–1.3x (268–291 vs 344–366ms) | `blog/lab/10-explain-pg.sql` mục 6, 3 lượt | Không sửa; ghi vào blog bài 10, nợ P9-7 |
 
 ---
 
@@ -829,6 +939,7 @@ nhật ký bên trên.
 | 1 triệu version cũ: bảng phình | 18.07x | **11.0x** | 1.0x | 1.0x |
 | 1 triệu version cũ: người đọc MỚI chậm | — | **5.1x** | 1.0x | 1.0x |
 | 1 triệu version cũ: người đọc CŨ chậm | — | 5.9x | **34.8x** | **18.5x** |
+| `kill -9` giữa lúc ghi: commit đã báo OK bị mất (mặc định / không chờ log) | 0 / — (phase 5: 200/200) | **0** / 2400 | **0** / 0 (binlog che), 6 khi tắt cả `sync_binlog` | **0** / 9123 |
 | ước lượng sai tối đa theo mặc định (lệch / tương quan / cũ) | phân bố đều | 1.0 / 10.9 / **100000x** | 1.9 / 10.0 / 1.0 | 2.0 / 1.0–10030 / 1.9 |
 
 ## Khẳng định + lệnh kiểm chứng
@@ -890,3 +1001,5 @@ lệch.
 - [ ] 📏 P9-3 · Chưa đo UUID trên Postgres khi riêng index PK lớn hơn RAM (cần giới hạn cả page cache: `docker --memory`)
 - [ ] 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x trên cùng lượng việc: chưa biết vì sao
 - [ ] 🔧 P9-5 · Cột `ms` của bảng 5 là một lần `EXPLAIN ANALYZE`, không làm nóng, không lấy trung vị
+- [ ] 📏 P9-6 · MySQL `flush_log_at_trx_commit=0` + `sync_binlog=0` chỉ mất 6 commit khi `kill -9`, MariaDB mất 9123: chưa biết vì sao
+- [ ] 📏 P9-7 · Hash join 16 batch nhanh hơn 1 batch 1.2–1.3x trên Postgres: giả thuyết L3 cache, chưa đo (cần `perf stat -e cache-misses`)
