@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 1-2 ngày (5 thí nghiệm × 1-2 giờ) · **thực tế:** 1 buổi
 - **Bắt đầu:** 2026-09-29 · **Kết thúc:** 2026-09-29
 - **Trạng thái:** ✅ xong
-- **Commit:** —
+- **Commit:** `e2fe5ed`
 
 > **Quy tắc ghi nhật ký:** mọi con số, mọi kết luận đều phải kèm **lệnh shell sinh ra nó**
 > và **output thật** (dán nguyên, không tóm tắt). Sáu tháng sau đọc lại phải chạy lại được.
