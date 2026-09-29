@@ -188,3 +188,18 @@ Ba món trả nợ **rẻ nhất mà nâng mức đại diện nhiều nhất**,
 1. **P8-1 `BEGIN`/`COMMIT`** — nối phase 6 vào mặt SQL. Gần như không có code mới, chỉ là nối dây.
 2. **P8-11 `GROUP BY` + aggregate** — dùng lại `spill.go`, được thêm một toán tử chặn.
 3. **P8-2 `UPDATE`/`DELETE`** — mở ra chuỗi version, VACUUM và write-write conflict *nhìn thấy được*.
+
+---
+
+# Phần 5 — Đã kiểm bằng số đo (phase 9)
+
+Kiểm trên PostgreSQL 17.11. Lệnh và output nằm ở [`diary/phase9.md`](../diary/phase9.md).
+
+| Nhận định | Kết quả đo |
+|---|---|
+| Postgres nâng RU thành RC, không có dirty read | ✅ ô `dirty-read × read-uncomm` = `.` |
+| Serializable là SSI (lạc quan) | ✅ không bao giờ `.w`; write skew bị huỷ với `could not serialize access due to read/write dependencies` |
+| Heap không theo thứ tự PK | ✅ UUIDv4 vs tăng dần: heap 1.00x, index PK 1.27x, tổng thời gian 1.02-1.81x (InnoDB 6.5-11x) |
+| Version cũ nằm trong heap, VACUUM không trả dung lượng | ✅ 1 triệu version cũ: heap 11x, **mọi** người đọc chậm 5x; sau `VACUUM` vẫn 155MB, phải `VACUUM FULL` |
+| Thống kê: MCV + `CREATE STATISTICS` | ✅ đúng với phân bố lệch và (sau khi tạo) với cột tương quan; **nhưng** tin thống kê cũ: ước lượng 1 hàng cho 100000 hàng thật |
+| Điểm hoà vốn của minidb (36.8%) cao vì "không có I/O" | ❌ **sai**: Postgres chạy trong RAM vẫn hoà vốn ở 4.7%. minidb cao vì seq scan đắt 15x mỗi hàng (P9-1) |

@@ -7,6 +7,8 @@ recovery, MVCC, secondary index, query planner và một front-end SQL — chứ
 - Nhật ký từng phase: [`diary/`](./diary)
 - Quy tắc ghi nhật ký: [`skills/diary/SKILL.md`](./skills/diary/SKILL.md)
 - Sổ nợ kỹ thuật: [`docs/debts.md`](./docs/debts.md)
+- So với DB thật: [`docs/vs-postgres.md`](./docs/vs-postgres.md), [`docs/vs-innodb.md`](./docs/vs-innodb.md), và các thí nghiệm ở [`reallab/`](./reallab) (phase 9)
+- Series blog cho dev mới: [`blog/`](./blog)
 
 ## Layout
 
@@ -24,6 +26,8 @@ cmd/idxlab/     phase 7 — năm bảng: điểm hoà vốn selectivity, thuế 
 cmd/minidb/     phase 8 — REPL SQL: gõ câu, xem kết quả, xem EXPLAIN cả cây logical lẫn physical
 cmd/sqllab/     phase 8 — sáu bảng: join, hạn mức bộ nhớ, sắp ngoài, pushdown, bỏ Sort, front-end
 cmd/dbcheck/    fsck cho file minidb — meta, freelist, double free, page mồ côi
+reallab/        phase 9 — năm bảng trên Postgres/MySQL/MariaDB thật (module Go riêng + docker-compose)
+blog/           series "Mở nắp database" cho dev mới
 scripts/        linux-baseline.sh (đo baseline có thể so máy), dm-flakey.sh (bơm lỗi thiết bị)
 docs/           debts.md (sổ nợ + lệnh trả từng món), linux-baseline.md (đo trên Linux thuần)
 bench/baseline/ kết quả đo lưu theo máy + ngày (text + JSON)

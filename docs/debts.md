@@ -591,6 +591,13 @@ go test ./internal/query/ -run TestEstimateIsWrongOnSkew -count=1   # PHẢI đ�
 `TestEstimateIsWrongOnSkew` khẳng định **đúng cái giới hạn này**, nên nó sẽ đỏ khi món nợ được
 trả — và đỏ đúng lúc. Đó là chủ ý, không phải sơ suất.
 
+**Phase 9 thêm:** MySQL 8.4 mắc **đúng** lỗi này ở truy cập `ref`: cardinality của `st_status` là 2,
+nên ước lượng N/2 cho giá trị chiếm 98% bảng, chọn index, chậm **7x** so với quét (1337 vs 190ms,
+`reallab -work stats`). Và có một cách trả **rẻ hơn histogram**: *index dive*. Với khoảng quét
+trên cột có index, đi xuống cây và đếm số khoá trong `Span` bằng cursor có sẵn. MySQL/MariaDB
+nhờ cách này mà không bị thống kê cũ lừa, trong khi Postgres (chỉ tin `pg_statistic`) ước lượng
+1 hàng cho 100000 hàng thật.
+
 ### 📏 P7-7 · `DefaultCost` là ba con số ĐOÁN, và đã biết sai vì HAI lý do độc lập
 
 ```go
@@ -737,6 +744,47 @@ quét **2000 khóa mỗi phép**. Nên `-benchtime=200000x` là **1.2 tỉ** bư
 **Cách trả:** tách thành hai target, hoặc để `-benchtime` theo **thời gian** thay vì theo số lần.
 
 ---
+
+## Nợ của phase 9
+
+### 📏 P9-1 · Seq scan của minidb đắt gấp 15 lần Postgres cho mỗi hàng
+
+```console
+$ cd reallab && go run . -work breakeven -repeat 9      # rồi tách phí mỗi hàng, xem diary/phase9.md
+                    quét/hàng ns  tra/hàng ns  tra/quét    hoà vốn ≈ quét/tra
+minidb (phase 7)             480         2142      4.5x                22.4%
+postgres 17                   31          725     23.5x                 4.3%
+mysql 8.4                    113         2060     18.3x                 5.5%
+```
+
+Phí **tra** của minidb ngang InnoDB, phí **quét** thì đắt gấp 4x InnoDB và 15x Postgres. Đây là lý
+do thật của điểm hoà vốn 36.8% (không phải "không có I/O" như phase 7 viết). **Trả bằng:** một
+bench quét của `internal/txn` tách hai phần `keys.Decode` (P7-1) và `DecodeChain` (P6-2), rồi sửa
+phần lớn hơn. **Bằng chứng phải có:** `idxlab -work breakeven` cho điểm hoà vốn tụt về dưới 15%.
+
+### ⏳ P9-2 · `txnlab` chưa có ô "RR kiểu MySQL"
+
+MySQL ở repeatable-read đọc bằng snapshot nhưng `UPDATE` trên bản **mới nhất**, nên để lọt lost
+update (`reallab -work anomaly`). minidb chỉ có một kiểu RR (snapshot isolation thật). Thêm một
+mức `RepeatableReadCurrentWrite` sẽ tái tạo được ô đó bằng chính code của minidb.
+
+### 📏 P9-3 · Chưa đo UUID trên Postgres khi index PK lớn hơn RAM
+
+Ở 2 triệu hàng, index PK của Postgres (80MB) vẫn vừa `shared_buffers`. **Trả bằng:** chạy
+`reallab -work pkorder -db pg` với container giới hạn `--memory` (cgroup tính cả page cache) và
+`shared_buffers` nhỏ, hoặc tăng số hàng tới khi index > RAM. **Kỳ vọng viết trước:** tỉ số ghi
+page tiến về phía InnoDB.
+
+### 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x
+
+`reallab -work bloat`: sau khi phiên cũ đóng, MySQL mất 8s để history list về 0, MariaDB mất 200ms,
+cùng 1000 transaction × 1000 hàng. Chưa biết do số luồng purge, do cách MariaDB viết lại purge
+từ 10.6, hay do cách đo (vòng chờ 100ms).
+
+### 🔧 P9-5 · Cột `ms` của `reallab -work stats` là một lần chạy
+
+Không làm nóng, không lấy trung vị: chỉ dùng được để xem thứ tự độ lớn. **Trả bằng:** gọi
+`estimate` hai lần, lấy lần sau (hoặc trung vị của 5 lần).
 
 ## Đã trả
 

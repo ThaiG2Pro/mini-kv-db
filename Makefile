@@ -1,4 +1,4 @@
-.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree crashlab crashlab-full crashlab-nosync crashlab-nowrite wallab bench-wal fuzz-db fuzz-txn fuzz-keys fuzz-table idxlab idxlab-breakeven idxlab-bytes bench-index test-index txnlab txnlab-anomaly txnlab-contention bench-txn test-txn check clean
+.PHONY: all test vet fmt bench iolab iolab-full baseline torn pagerlab slotlab bufferlab btreelab bench-btree fuzz fuzz-pool fuzz-btree crashlab crashlab-full crashlab-nosync crashlab-nowrite wallab bench-wal fuzz-db fuzz-txn fuzz-keys fuzz-table idxlab idxlab-breakeven idxlab-bytes bench-index test-index txnlab txnlab-anomaly txnlab-contention bench-txn test-txn reallab-up reallab reallab-down check clean
 
 all: fmt vet test
 
@@ -267,3 +267,13 @@ torn:
 
 clean:
 	rm -rf data bin
+
+# Phase 9: đối chiếu với Postgres / MySQL / MariaDB thật (cần Docker)
+reallab-up:
+	docker compose -f reallab/docker-compose.yml up -d
+
+reallab:
+	cd reallab && go run . -work all -repeat 9
+
+reallab-down:
+	docker compose -f reallab/docker-compose.yml down -v

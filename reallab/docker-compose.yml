@@ -1,0 +1,28 @@
+# Phase 9 — đối chiếu minidb với DB thật.
+# Mỗi DB được cấp buffer pool 256MB để thí nghiệm có thể vượt cache khi cần.
+services:
+  pg:
+    image: postgres:17
+    container_name: rl-pg
+    environment:
+      POSTGRES_PASSWORD: lab
+      POSTGRES_DB: lab
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "track_io_timing=on"]
+    ports: ["55432:5432"]
+    shm_size: 512mb
+  mysql:
+    image: mysql:8.4
+    container_name: rl-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: lab
+      MYSQL_DATABASE: lab
+    command: ["--innodb-buffer-pool-size=256M"]
+    ports: ["53306:3306"]
+  maria:
+    image: mariadb:11.8
+    container_name: rl-maria
+    environment:
+      MARIADB_ROOT_PASSWORD: lab
+      MARIADB_DATABASE: lab
+    command: ["--innodb-buffer-pool-size=256M"]
+    ports: ["53307:3306"]

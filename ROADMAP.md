@@ -41,8 +41,9 @@ xem mục "Sau roadmap" ở cuối.
 | 4 | ✅ B+Tree: search/insert/split/delete/merge, cursor | 4-6 ngày (thực tế 1) | Property test 7 bất biến + bench 1M khóa: ngẫu nhiên/tăng dần = 33x writes/op, [diary/phase4.md](diary/phase4.md) · [log](diary/phase4-log.md) |
 | 5 | ✅ **WAL + recovery**: ARIES-lite (analysis/redo/undo), checkpoint | 3-4 ngày (thực tế 2) | 200/200 lần `kill -9` ngẫu nhiên, 9194 txn đã commit được kiểm — **và** 10/10 báo SAI khi cố tình làm mất log ([diary/phase5.md](diary/phase5.md) · [log](diary/phase5-log.md)) |
 | 6 | ✅ **Transaction & concurrency**: MVCC snapshot isolation + S2PL, 4 mức isolation, deadlock detection | 3-4 ngày (thực tế 1) | Bảng 5 anomaly × 4 mức khớp lý thuyết từng ô, khẳng định theo **cả hai chiều**; chuyển tiền vỡ ở mức thấp, giữ ở mức cao; và **chỗ MVCC thua lock** ([diary/phase6.md](diary/phase6.md) · [log](diary/phase6-log.md)) |
-| 7 | ✅ **Secondary index + query**: bộ mã hoá khóa giữ thứ tự, catalog nhiều bảng trong một cây, 3 kế hoạch + mô hình chi phí đo được | 2-3 ngày (thực tế 2 buổi) | Điểm hoà vốn selectivity **đo được 36.8%** (không phải 5-20% như sách — vì ở quy mô này không có I/O thật), và bảng còn có cột **planner chọn sai** ([diary/phase7.md](diary/phase7.md) · [log](diary/phase7-log.md)) |
+| 7 | ✅ **Secondary index + query**: bộ mã hoá khóa giữ thứ tự, catalog nhiều bảng trong một cây, 3 kế hoạch + mô hình chi phí đo được | 2-3 ngày (thực tế 2 buổi) | Điểm hoà vốn selectivity **đo được 36.8%** (không phải 5-20% như sách). Lời giải thích lúc đó, "vì không có I/O thật", **bị phase 9 bác**: DB thật cũng chạy trong RAM mà vẫn hoà vốn ở 4.7-7%; nguyên nhân thật là seq scan của minidb đắt gấp 15x Postgres cho mỗi hàng (nợ P9-1), và bảng còn có cột **planner chọn sai** ([diary/phase7.md](diary/phase7.md) · [log](diary/phase7-log.md)) |
 | 8 | ✅ **SQL front-end**: lexer/parser/binder, logical vs physical plan, nested loop + Grace hash join, external merge sort, predicate pushdown, `EXPLAIN` | 2-3 ngày (thực tế 1) | Sáu bảng số, mỗi bảng là một câu hỏi của phase — và bảng **pushdown** chỉ ra một **luật optimizer còn thiếu** (1.18x → 18.53x sau khi thêm nó): lần đầu trong 8 phase số đo tìm ra thứ **CHƯA CÓ**, không phải thứ sai ([diary/phase8.md](diary/phase8.md) · [log](diary/phase8-log.md)) |
+| 9 | ✅ **Đối chiếu DB thật**: cùng câu hỏi, chạy trên Postgres 17 / MySQL 8.4 / MariaDB 11.8 (`reallab/`) | 1-2 ngày (thực tế 1 buổi) | Năm bảng: hoà vốn (4.7 / 4.9 / 7.0%), anomaly × isolation × 3 DB (MySQL để lọt lost update ở RR), UUIDv4 ghi page **26-32x** trên InnoDB (minidb 33x) nhưng ~1.3x trên Postgres, transaction quên commit phình heap **11x** ở Postgres nhưng chỉ phạt phiên cũ **35x** ở InnoDB, và planner mỗi DB đoán sai ở một chỗ khác ([diary/phase9.md](diary/phase9.md)) |
 
 Tổng ~4-6 tuần với 2-3h/ngày.
 **Bắt buộc: phase 1-5** (storage + B+Tree + WAL). Phase 6 là phần nâng bạn từ "biết DB" lên "thiết kế được DB".
@@ -338,6 +339,28 @@ một truy vấn **điểm** — tự đo được lý do prepared statement và
 - **Trả nợ phase trước:** **P7-9** (đầy đủ — `ORDER BY` dùng thứ tự index, và `Filter` đẩy xuống).
   Nợ mới: **P8-1 → P8-12**. Món lớn nhất là **P8-1**: chưa có `BEGIN`/`COMMIT`, nên phase 6 có 4
   mức isolation mà **không viết được** một transaction nhiều câu **bằng SQL**.
+
+
+## Phase 9 — Đối chiếu với DB thật (1-2 ngày) — ✅ xong
+
+Tám phase trước tự viết ra DB để hiểu nó. Phase này hỏi: **những gì minidb dạy có đúng với DB
+người ta dùng thật không?** Mỗi thí nghiệm lấy một con số đã đo trên minidb, đặt câu hỏi y hệt
+cho Postgres, MySQL và MariaDB (Docker, `reallab/docker-compose.yml`), rồi so.
+
+| Bảng | Câu hỏi | Nối với phase |
+|---|---|---|
+| `-work breakeven` | Index thắng seq tới độ chọn lọc nào, khi dữ liệu trong RAM? | 7 |
+| `-work anomaly` | Anomaly nào lọt ở mức nào, và DB chặn bằng chờ hay bằng huỷ? | 6 |
+| `-work pkorder` | UUIDv4 vs khoá tăng dần: ai đau, đau bao nhiêu? | 4 |
+| `-work bloat` | Transaction quên commit làm phình cái gì, phạt ai? | 6 |
+| `-work stats` | Planner đoán sai số hàng khi nào, mỗi DB chữa bằng gì? | 7 |
+
+- **Deliverable:** `cd reallab && go run .`, module riêng để minidb vẫn không có dependency nào.
+- **Kết quả đáng nhớ nhất:** một lời giải thích của phase 7 bị bác (xem dòng phase 7 ở bảng tổng quan),
+  và InnoDB cho **cùng tỉ số** với minidb ở chỗ hai bên cùng kiến trúc (ghi page khi khoá ngẫu
+  nhiên: 26-32x vs 33x; phí tra một hàng qua secondary index: ~2µs vs 2.1µs).
+- **Nguyên liệu cho series blog** ở `blog/`.
+- Nợ mới: **P9-1 → P9-5**.
 
 ---
 

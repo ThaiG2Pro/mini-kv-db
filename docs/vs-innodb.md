@@ -72,7 +72,7 @@ Thang **mức đại diện** giống vs-postgres: ★★★★★ = cùng nguy�
 | Tầng | minidb | InnoDB | Đại diện |
 |---|---|---|---|
 | **Cấu trúc** | Split/merge/redistribute, sibling pointer, cursor | Như vậy + liên kết anh em **hai chiều** | ★★★★ |
-| **Chèn tăng dần** | Đo được: tăng dần vs ngẫu nhiên = **33x writes/op** | **Tách page ở điểm chèn** khi thấy chèn tuần tự (không chia 50/50) → page đầy ~15/16; đây là lý do InnoDB khuyên PK `AUTO_INCREMENT` | ★★★ *(minidb đo ra hiện tượng nhưng chưa có heuristic tách lệch)* |
+| **Chèn tăng dần** | Đo được: tăng dần vs ngẫu nhiên = **33x writes/op** | **Tách page ở điểm chèn** khi thấy chèn tuần tự (không chia 50/50) → page đầy ~15/16; đây là lý do InnoDB khuyên PK `AUTO_INCREMENT` | ★★★★★ *(minidb có đúng heuristic này: `RightmostSplit` cắt 100/0 ở leaf cực phải — `internal/btree/split.go`; phase 4 đo được lá đặc ~100% vs ~70%)* |
 | **Ngưỡng merge** | Dưới nửa page | `MERGE_THRESHOLD` = 50%, **chỉnh được theo từng index** | ★★★★ |
 | **Latch khi ghi** | Nửa đọc có latch-coupling, nửa ghi còn nợ (P4-5) | Lạc quan trước (chỉ latch lá), lỗi thì chạy lại bi quan với **SX-lock trên index** | ★★ |
 | **Nén khoá** | ✗ (nợ P4-2) | ✗ trên định dạng thường; chỉ có ở bảng `COMPRESSED` (zlib cả page) | ★★★★ *(InnoDB cũng không làm prefix compression — phần này minidb không kém)* |
@@ -185,7 +185,7 @@ ba chỗ mà **InnoDB cũng đã bỏ hoặc tự thừa nhận là sai**:
 |---|---|---|---|
 | **Storage / pager / slotted page** | **~65%** | ~85% | InnoDB có extent/segment, page directory thưa, doublewrite, page tràn — nhiều cấu trúc hơn heap của Postgres |
 | **Buffer pool** | **~70%** | ~75% | LRU-K/Belady trúng đúng ý tưởng midpoint insertion; thiếu page cleaner + read-ahead |
-| **B+Tree** | **~70%** | ~70% | Không đổi; thiếu tách lệch khi chèn tuần tự, latch ghi |
+| **B+Tree** | **~75%** | ~70% | Có tách lệch cực phải như InnoDB; thiếu latch ghi, sorted index build |
 | **Redo + undo + recovery** | **~75%** | ~85% | Cùng dạng ARIES (cao hơn Postgres về *hình dạng*), nhưng undo không phải một kho riêng, log không vòng, không có 2PC với binlog |
 | **Transaction / MVCC / lock** | **~70%** | ~70% | Serializable trùng thuật toán, RU thật; nhưng chỗ để version cũ khác hẳn, thiếu purge, lock table chưa theo page |
 | **Catalog + codec + index** | **~80%** | ~70% | Clustered + secondary-trỏ-bằng-PK **trùng khít**; codec giống MyRocks hơn InnoDB |
@@ -205,3 +205,19 @@ Ba món trả nợ **đáng nhất khi nhìn từ phía InnoDB** (khác thứ t�
 1. **P8-1 `BEGIN`/`COMMIT`**: vẫn đứng đầu, lý do như cũ. Sau khi làm xong, thêm được ngay ô "RR kiểu MySQL" (§3.B) vào bảng anomaly.
 2. **P6-1 + P6-5: chuyển version cũ ra một vùng undo, rồi thêm purge nền.** Đây là món đắt nhất (vài buổi), nhưng là bài học riêng mà chỉ phép so với InnoDB mới chỉ ra. Nó cũng gỡ luôn trần 2KB/khoá.
 3. **P7-6 bằng index dive** thay cho histogram: minidb đã có cursor, chỉ cần đếm số khoá trong `Span`. Ước tính khoảng 1 giờ, và planner hết chọn sai trên dữ liệu lệch.
+
+---
+
+# Phần 5 — Đã kiểm bằng số đo (phase 9)
+
+Các nhận định ở trên được kiểm trên MySQL 8.4.11 và MariaDB 11.8.9 thật. Lệnh và output nằm ở
+[`diary/phase9.md`](../diary/phase9.md).
+
+| Nhận định | Kết quả đo |
+|---|---|
+| Secondary index trỏ bằng PK → mỗi lần tra là thêm một lần xuống cây | Phí tra một hàng: minidb 2142ns, MySQL 2060ns, MariaDB 1830ns; Postgres (`ctid`) 725ns |
+| RR của MySQL để lọt lost update; MariaDB 11.6+ chặn nhờ `innodb_snapshot_isolation` | ✅ MySQL `X`, MariaDB `.a` với `Error 1020 (HY000)`; tắt biến thì MariaDB ra `X` |
+| Serializable của InnoDB là khoá, giống minidb | ✅ `.w` (chờ) ở 3 anomaly, `.a` chỉ khi deadlock thật (`1213`) |
+| Chèn ngẫu nhiên vào clustered B+Tree | ✅ ghi page 26-32x (minidb 33x), bảng to hơn 1.43-1.62x, nạp chậm hơn 6.5-11x |
+| Version cũ ở undo → chỉ phiên cũ trả giá | ✅ bảng 1.0x, người đọc mới 1.0x, người đọc cũ 18-35x; history list đếm **transaction**, không đếm hàng |
+| Index dive thay cho histogram | ✅ MySQL/MariaDB không bị thống kê cũ lừa; nhưng truy cập `ref` dùng cardinality (giả định đều) và chọn index cho 98% bảng, chậm 7x |
