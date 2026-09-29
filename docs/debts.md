@@ -794,7 +794,7 @@ chính là 67–98ns mỗi hàng probe, tăng tuyến tính theo số hàng prob
 xuống RAM đo bằng microbenchmark. Bằng chứng mới gián tiếp: WSL2 không có PMU nên không đếm được
 cache miss.
 
-**Còn lại, trả trên Linux thuần** (⏱ ~10 phút, lần đầu nạp dữ liệu ~1 phút):
+**Còn lại, trả trên Linux thuần** (⏱ ~10 phút, lần đầu nạp dữ liệu ~1 phút). Hướng dẫn từng bước và cách đọc kết quả: [`linux-phase9.md`](./linux-phase9.md).
 
 ```bash
 sudo apt install -y linux-tools-$(uname -r) linux-tools-generic

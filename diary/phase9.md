@@ -1071,7 +1071,7 @@ D. đọc ngẫu nhiên, độc lập, vào mảng uint64 (như probe vào mản
 **Chưa trả hẳn:** mọi bằng chứng cho H1 ở đây đều gián tiếp (độ dốc theo số hàng probe, và con số
 khớp với microbenchmark). Chưa đếm được cache miss trực tiếp, và chưa tách được L3 miss với TLB
 miss. Cửa sau đã dựng sẵn cho máy Linux thuần, cùng tinh thần `scripts/linux-baseline.sh` của
-phase 0: `./scripts/p97-hashjoin.sh`. Script kiểm có PMU trước, ghi `lscpu`/governor/THP vào
+phase 0: `./scripts/p97-hashjoin.sh`, hướng dẫn ở `docs/linux-phase9.md`. Script kiểm có PMU trước, ghi `lscpu`/governor/THP vào
 `env.txt`, dựng `rl-pg` + `rl-pgm`, rồi chạy thêm phép E: `perf stat -p <backend>` với
 `cache-misses`, `LLC-load-misses`, `dTLB-load-misses`, `cycles`, `instructions` cho 1MB và 256MB,
 chia theo hàng probe. Phần parse đã được thử bằng một `perf` giả; `perf` thật thì chưa chạy lần
