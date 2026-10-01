@@ -159,11 +159,17 @@ func (t *Txn) Get(key []byte) (val []byte, ok bool, err error) {
 		}
 	}
 	snap := t.readSnap()
-	c, err := t.s.chain(key)
+	raw, err := t.s.d.Get(key)
+	if errors.Is(err, btree.ErrKeyNotFound) {
+		return nil, false, nil
+	}
 	if err != nil {
 		return nil, false, err
 	}
-	v, has := c.Visible(snap)
+	v, has, err := VisibleRaw(raw, snap)
+	if err != nil {
+		return nil, false, err
+	}
 	if !has || v.Deleted {
 		return nil, false, nil
 	}

@@ -128,11 +128,10 @@ func (i *Iter) advance() error {
 		if reserved(k) {
 			continue
 		}
-		c, err := DecodeChain(i.it.Value())
+		v, has, err := VisibleRaw(i.it.Value(), i.snap)
 		if err != nil {
 			return fmt.Errorf("txn: khóa %q: %w", k, err)
 		}
-		v, has := c.Visible(i.snap)
 		if !has || v.Deleted {
 			continue
 		}

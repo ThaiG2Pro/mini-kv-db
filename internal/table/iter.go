@@ -81,25 +81,32 @@ func (r *RowIter) Next() bool {
 		return false
 	}
 	r.t.St.RowsScanned++
-	pk, _, err := keys.Decode(r.it.Key()[r.plen:], len(r.sc.PK), r.ord)
+	// Hai lần cấp phát mỗi hàng, cố định: một mảng Value cho cả pk lẫn hàng,
+	// một arena cho thân của mọi cột bytes. Trước nợ P9-1 là 7 lần (mỗi
+	// Decode một mảng, mỗi cột bytes vài lần vì thân được dựng bằng append
+	// từng byte).
+	k, v := r.it.Key()[r.plen:], r.it.Value()
+	np := len(r.sc.PK)
+	vals := make([]keys.Value, 0, np+len(r.sc.Cols))
+	arena := make([]byte, 0, len(k)+len(v))
+	vals, arena, _, err := keys.DecodeAppend(vals, arena, k, np, r.ord)
 	if err != nil {
 		r.err = fmt.Errorf("table %s: khóa hàng %x: %w", r.sc.Name, r.it.Key(), err)
 		return false
 	}
-	row, _, err := keys.Decode(r.it.Value(), len(r.sc.Cols), nil)
+	vals, _, _, err = keys.DecodeAppend(vals, arena, v, len(r.sc.Cols), nil)
 	if err != nil {
-		r.err = fmt.Errorf("table %s: hàng %v: %w", r.sc.Name, pk, err)
+		r.err = fmt.Errorf("table %s: hàng %v: %w", r.sc.Name, vals[:np], err)
 		return false
 	}
-	r.pk, r.row = pk, row
+	r.pk, r.row = vals[:np:np], vals[np:]
 	return true
 }
 
-// PK và Row: keys.Decode đã cấp phát slice mới mỗi hàng (nợ P7-1), nên hai
-// giá trị này KHÔNG bị lần Next sau ghi đè — khác với txn.Iter ở tầng dưới.
-// Sự khác biệt ấy là một điều đáng biết chứ không phải một tiện lợi: nó chính
-// là 152 byte × mỗi hàng mà P7-1 nói tới, và là lý do vectorized execution
-// tồn tại.
+// PK và Row: mỗi hàng có mảng và arena riêng, nên hai giá trị này KHÔNG bị lần
+// Next sau ghi đè — khác với txn.Iter ở tầng dưới. Hash join giữ nguyên hàng
+// của build side, sort giữ cả bảng: họ dựa vào điều này. Cái giá là 2 lần cấp
+// phát mỗi hàng, và đó là lý do vectorized execution tồn tại.
 func (r *RowIter) PK() []keys.Value  { return r.pk }
 func (r *RowIter) Row() []keys.Value { return r.row }
 func (r *RowIter) Err() error        { return r.err }

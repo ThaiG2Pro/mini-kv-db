@@ -136,5 +136,24 @@ func FuzzKeyCodec(f *testing.F) {
 					desc, script[:used], again, v)
 			}
 		}
+		// DecodeAppend chép thân của nhiều trường vào CÙNG một arena: giải
+		// hai lần liền nhau vào một arena có sẵn rác ở đầu, rồi so từng trường
+		// với DecodeField. Trường sau giẫm lên trường trước thì đỏ ở đây.
+		ord := Order{false, true}
+		vs, _, used, err := DecodeAppend(nil, []byte("rác"), script, 2, ord)
+		if err != nil {
+			return
+		}
+		off := 0
+		for i, v := range vs {
+			w, u, err := DecodeField(script[off:], ord.desc(i))
+			if err != nil || !bytes.Equal(AppendField(nil, v, ord.desc(i)), AppendField(nil, w, ord.desc(i))) {
+				t.Fatalf("trường %d: DecodeAppend %v, DecodeField %v (%v)", i, v, w, err)
+			}
+			off += u
+		}
+		if off != used {
+			t.Fatalf("DecodeAppend báo dùng %d byte, từng trường cộng lại %d", used, off)
+		}
 	})
 }

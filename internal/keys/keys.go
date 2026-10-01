@@ -245,64 +245,91 @@ func AppendField(dst []byte, v Value, desc bool) []byte {
 // Phần thân của TypeBytes được CHÉP ra: người gọi thường giữ giá trị lâu hơn
 // buffer khóa (buffer ấy là của cursor và bị ghi lại ở bước Next kế).
 func DecodeField(b []byte, desc bool) (Value, int, error) {
+	v, _, used, err := decodeFieldTo(nil, b, desc)
+	return v, used, err
+}
+
+// decodeFieldTo là DecodeField, nhưng phần thân của một trường bytes được
+// chép vào CUỐI arena thay vì vào một slice riêng. arena nil thì cấp đúng cỡ
+// của trường đó, một lần. Value.B được cắt cap = len, nên ai append vào nó
+// cũng không giẫm lên trường kế tiếp trong cùng arena.
+//
+// Bản trước dựng thân bằng `out = append(out, c)` từng byte, bắt đầu từ
+// []byte{}: một trường 40 byte là 4 lần cấp phát (8, 16, 32, 48) — đó là phần
+// lớn của "7 lần cấp phát mỗi hàng" mà P9-1 đo được.
+func decodeFieldTo(arena, b []byte, desc bool) (Value, []byte, int, error) {
 	if len(b) == 0 {
-		return Value{}, 0, fmt.Errorf("%w: hết byte khi chờ tag", ErrShortKey)
+		return Value{}, arena, 0, fmt.Errorf("%w: hết byte khi chờ tag", ErrShortKey)
 	}
 	x := xorOf(desc)
 	t := Type(b[0] ^ x)
 	switch t {
 	case TypeNull, TypeFalse, TypeTrue:
-		return Value{T: t}, 1, nil
+		return Value{T: t}, arena, 1, nil
 	case TypeInt:
 		if len(b) < 9 {
-			return Value{}, 0, fmt.Errorf("%w: int cần 8 byte, có %d", ErrShortKey, len(b)-1)
+			return Value{}, arena, 0, fmt.Errorf("%w: int cần 8 byte, có %d", ErrShortKey, len(b)-1)
 		}
-		var raw [8]byte
-		for i := 0; i < 8; i++ {
-			raw[i] = b[1+i] ^ x
-		}
-		return Value{T: TypeInt, I: int64(binary.BigEndian.Uint64(raw[:]) ^ (1 << 63))}, 9, nil
+		u := binary.BigEndian.Uint64(b[1:9]) ^ uint64(x)*0x0101010101010101
+		return Value{T: TypeInt, I: int64(u ^ (1 << 63))}, arena, 9, nil
 	case TypeUint:
 		if len(b) < 9 {
-			return Value{}, 0, fmt.Errorf("%w: uint cần 8 byte, có %d", ErrShortKey, len(b)-1)
+			return Value{}, arena, 0, fmt.Errorf("%w: uint cần 8 byte, có %d", ErrShortKey, len(b)-1)
 		}
-		var raw [8]byte
-		for i := 0; i < 8; i++ {
-			raw[i] = b[1+i] ^ x
-		}
-		return Value{T: TypeUint, U: binary.BigEndian.Uint64(raw[:])}, 9, nil
+		u := binary.BigEndian.Uint64(b[1:9]) ^ uint64(x)*0x0101010101010101
+		return Value{T: TypeUint, U: u}, arena, 9, nil
 	case TypeBytes:
-		out := []byte{}
-		i := 1
-		for {
-			if i >= len(b) {
-				return Value{}, 0, fmt.Errorf("%w: bytes không có dấu kết thúc", ErrShortKey)
-			}
+		// Đi một lượt để biết độ dài thật (và bắt hình không canonical), rồi
+		// mới chép: chép một lần, đúng cỡ.
+		n, used, err := bytesLen(b, x)
+		if err != nil {
+			return Value{}, arena, 0, err
+		}
+		if arena == nil {
+			arena = make([]byte, 0, n)
+		}
+		start := len(arena)
+		for i := 1; i < used-2; i++ {
 			c := b[i] ^ x
-			if c != 0x00 {
-				out = append(out, c)
-				i++
-				continue
+			arena = append(arena, c)
+			if c == 0x00 {
+				i++ // 0x00 0xff là một byte 0x00 thật
 			}
-			if i+1 >= len(b) {
-				return Value{}, 0, fmt.Errorf("%w: 0x00 lẻ ở cuối", ErrShortKey)
-			}
-			switch b[i+1] ^ x {
-			case 0x00:
-				return Value{T: TypeBytes, B: out}, i + 2, nil
-			case 0xff:
-				out = append(out, 0x00)
-				i += 2
-			default:
-				// Không canonical: Encode không bao giờ sinh ra hình này.
-				// Chấp nhận nó là mở cửa cho hai dãy byte khác nhau cùng giải
-				// ra một giá trị — tức là cùng một hàng có hai khóa index.
-				return Value{}, 0, fmt.Errorf("%w: sau 0x00 phải là 0x00 hoặc 0xff, gặp %#02x",
-					ErrBadKey, b[i+1]^x)
-			}
+		}
+		return Value{T: TypeBytes, B: arena[start:len(arena):len(arena)]}, arena, used, nil
+	}
+	return Value{}, arena, 0, fmt.Errorf("%w: %#02x", ErrTypeUnknown, uint8(t))
+}
+
+// bytesLen đọc thân của một trường bytes (b[0] là tag): trả độ dài sau khi bỏ
+// escape và số byte đã dùng, gồm cả cặp kết thúc 0x00 0x00.
+func bytesLen(b []byte, x byte) (n, used int, err error) {
+	for i := 1; ; {
+		if i >= len(b) {
+			return 0, 0, fmt.Errorf("%w: bytes không có dấu kết thúc", ErrShortKey)
+		}
+		if b[i]^x != 0x00 {
+			n++
+			i++
+			continue
+		}
+		if i+1 >= len(b) {
+			return 0, 0, fmt.Errorf("%w: 0x00 lẻ ở cuối", ErrShortKey)
+		}
+		switch b[i+1] ^ x {
+		case 0x00:
+			return n, i + 2, nil
+		case 0xff:
+			n++
+			i += 2
+		default:
+			// Không canonical: Encode không bao giờ sinh ra hình này.
+			// Chấp nhận nó là mở cửa cho hai dãy byte khác nhau cùng giải
+			// ra một giá trị — tức là cùng một hàng có hai khóa index.
+			return 0, 0, fmt.Errorf("%w: sau 0x00 phải là 0x00 hoặc 0xff, gặp %#02x",
+				ErrBadKey, b[i+1]^x)
 		}
 	}
-	return Value{}, 0, fmt.Errorf("%w: %#02x", ErrTypeUnknown, uint8(t))
 }
 
 // Encode mã hoá cả dãy giá trị.
@@ -322,17 +349,29 @@ func EncodeTo(dst []byte, ord Order, vals ...Value) []byte {
 // schema nói, chứ không phải "đọc tới hết": một khóa index là <cột index> nối
 // <primary key>, và chỗ nối nằm ở đâu chỉ schema biết.
 func Decode(b []byte, n int, ord Order) ([]Value, int, error) {
-	out := make([]Value, 0, n)
+	out, _, off, err := DecodeAppend(make([]Value, 0, n), nil, b, n, ord)
+	return out, off, err
+}
+
+// DecodeAppend là Decode cho lối gọi nóng: nối n giá trị vào dst, và chép thân
+// của MỌI trường bytes vào cuối arena (một vùng chung) thay vì mỗi trường một
+// slice riêng. Trả dst, arena đã nối, và số byte đã dùng.
+//
+// Cấp dst đủ cap và arena cap >= len(b) từ trước thì cả lời gọi là 0 lần cấp
+// phát: thân đã bỏ escape không bao giờ dài hơn bản mã hoá. Các Value trả về
+// trỏ vào arena, nên arena phải sống ít nhất bằng chúng — và KHÔNG được dùng
+// lại cho hàng sau nếu người gọi còn giữ hàng trước.
+func DecodeAppend(dst []Value, arena, b []byte, n int, ord Order) ([]Value, []byte, int, error) {
 	off := 0
 	for i := 0; i < n; i++ {
-		v, used, err := DecodeField(b[off:], ord.desc(i))
+		v, a, used, err := decodeFieldTo(arena, b[off:], ord.desc(i))
 		if err != nil {
-			return nil, 0, fmt.Errorf("trường %d: %w", i, err)
+			return dst, arena, 0, fmt.Errorf("trường %d: %w", i, err)
 		}
-		out = append(out, v)
+		dst, arena = append(dst, v), a
 		off += used
 	}
-	return out, off, nil
+	return dst, arena, off, nil
 }
 
 // DecodeAll đọc tới hết byte. Trả lỗi nếu còn byte lẻ không thành trường.

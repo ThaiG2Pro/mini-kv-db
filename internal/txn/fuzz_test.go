@@ -41,10 +41,28 @@ func FuzzChainCodec(f *testing.F) {
 		//    Nếu giải mã ĐƯỢC thì mã hoá lại phải ra đúng byte cũ — layout là
 		//    cố định nên nó phải canonical, không có chỗ cho hai cách viết
 		//    cùng một chuỗi.
-		if c, err := DecodeChain(script); err == nil {
-			again := c.Encode(make([]byte, 0, c.EncodedSize()))
+		c0, err0 := DecodeChain(script)
+		if err0 == nil {
+			again := c0.Encode(make([]byte, 0, c0.EncodedSize()))
 			if !bytes.Equal(again, script) {
 				t.Fatalf("mã hoá lại khác byte gốc:\n gốc %x\n lại %x", script, again)
+			}
+		}
+		// 1b. VisibleRaw (đường đọc nóng, không dựng Chain) phải trả ĐÚNG cái
+		//     DecodeChain + Visible trả, ở mọi snapshot — kể cả việc từ chối
+		//     cùng những chuỗi hỏng. Nó dừng sớm mà quên kiểm đuôi thì đỏ ở đây.
+		for _, xmax := range []uint64{0, 1, 2, 5, 9, 20, 1 << 40} {
+			snap := Snapshot{Xmax: xmax, Xmin: xmax, Active: map[uint64]bool{3: true}}
+			v, has, err := VisibleRaw(script, snap)
+			if (err == nil) != (err0 == nil) {
+				t.Fatalf("xmax=%d: VisibleRaw err=%v, DecodeChain err=%v", xmax, err, err0)
+			}
+			if err0 != nil {
+				continue
+			}
+			w, whas := c0.Visible(snap)
+			if has != whas || v.Xmin != w.Xmin || v.Deleted != w.Deleted || !bytes.Equal(v.Val, w.Val) {
+				t.Fatalf("xmax=%d: VisibleRaw %+v/%v, Visible %+v/%v", xmax, v, has, w, whas)
 			}
 		}
 

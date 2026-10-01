@@ -104,45 +104,101 @@ func (c Chain) Encode(dst []byte) []byte {
 // DecodeChain đọc chuỗi. Val trỏ THẲNG vào b — người gọi tự chép nếu giữ lâu.
 // (db.DB.Get đã trả về một bản chép riêng, nên trong package này là an toàn.)
 func DecodeChain(b []byte) (Chain, error) {
-	if len(b) < 1 {
-		return nil, fmt.Errorf("%w: rỗng", ErrBadChain)
+	r, err := newChainReader(b)
+	if err != nil {
+		return nil, err
 	}
-	n := int(b[0])
-	b = b[1:]
-	c := make(Chain, 0, n)
-	for i := 0; i < n; i++ {
-		if len(b) < 11 {
-			return nil, fmt.Errorf("%w: thiếu header version %d", ErrBadChain, i)
+	c := make(Chain, 0, r.n)
+	for r.more() {
+		v, err := r.next()
+		if err != nil {
+			return nil, err
 		}
-		f := b[0]
-		if f&^flagsKnown != 0 {
-			return nil, fmt.Errorf("%w: version %d có bit cờ lạ %#02x", ErrBadChain, i, f)
-		}
-		xmin := binary.LittleEndian.Uint64(b[1:])
-		ln := int(b[9]) | int(b[10])<<8
-		b = b[11:]
-		if len(b) < ln {
-			return nil, fmt.Errorf("%w: version %d nói %d byte, còn %d", ErrBadChain, i, ln, len(b))
-		}
-		v := Version{Xmin: xmin, Deleted: f&flagDeleted != 0}
-		if v.Deleted {
-			// Tombstone không mang thân. Nếu nó nói có thì byte trên đĩa
-			// không phải cái mà Encode sinh ra được — cũng do fuzzer tìm
-			// ra, cùng một họ với bit cờ lạ ở trên.
-			if ln != 0 {
-				return nil, fmt.Errorf("%w: version %d là tombstone nhưng nói %d byte thân",
-					ErrBadChain, i, ln)
-			}
-		} else {
-			v.Val = b[:ln]
-		}
-		b = b[ln:]
 		c = append(c, v)
 	}
-	if len(b) != 0 {
-		return nil, fmt.Errorf("%w: còn %d byte thừa", ErrBadChain, len(b))
+	return c, r.end()
+}
+
+// VisibleRaw là DecodeChain rồi Visible, nhưng không dựng Chain: đi thẳng trên
+// byte đã mã hoá và chỉ trả version mà snapshot nhìn thấy. Đường đọc nóng (mỗi
+// hàng của mỗi lần quét, mỗi Get) dùng nó; trước nợ P9-1 / P6-2, mỗi hàng là
+// một lần cấp phát Chain chỉ để đọc phần tử đầu tiên nhìn thấy được.
+//
+// Nó VẪN đi hết mọi header và kiểm như DecodeChain (cờ lạ, độ dài, byte thừa),
+// dù đã tìm thấy bản cần trả: một chuỗi hỏng ở đuôi phải nổi lỗi ở lần đọc
+// đầu tiên chạm vào nó, không phải lặng lẽ trả về bản ở đầu. Header 11 byte,
+// bước nhảy O(1), nên phần đi tiếp chỉ là vài phép so mỗi version.
+func VisibleRaw(b []byte, s Snapshot) (Version, bool, error) {
+	r, err := newChainReader(b)
+	if err != nil {
+		return Version{}, false, err
 	}
-	return c, nil
+	var out Version
+	found := false
+	for r.more() {
+		v, err := r.next()
+		if err != nil {
+			return Version{}, false, err
+		}
+		if !found && s.Visible(v.Xmin) {
+			out, found = v, true
+		}
+	}
+	return out, found, r.end()
+}
+
+// chainReader là bộ đọc chuỗi version dùng chung cho DecodeChain và
+// VisibleRaw: một chỗ duy nhất biết định dạng và kiểm tính canonical.
+type chainReader struct {
+	b    []byte
+	n, i int
+}
+
+func newChainReader(b []byte) (chainReader, error) {
+	if len(b) < 1 {
+		return chainReader{}, fmt.Errorf("%w: rỗng", ErrBadChain)
+	}
+	return chainReader{b: b[1:], n: int(b[0])}, nil
+}
+
+func (r *chainReader) more() bool { return r.i < r.n }
+
+func (r *chainReader) next() (Version, error) {
+	b, i := r.b, r.i
+	if len(b) < 11 {
+		return Version{}, fmt.Errorf("%w: thiếu header version %d", ErrBadChain, i)
+	}
+	f := b[0]
+	if f&^flagsKnown != 0 {
+		return Version{}, fmt.Errorf("%w: version %d có bit cờ lạ %#02x", ErrBadChain, i, f)
+	}
+	xmin := binary.LittleEndian.Uint64(b[1:])
+	ln := int(b[9]) | int(b[10])<<8
+	b = b[11:]
+	if len(b) < ln {
+		return Version{}, fmt.Errorf("%w: version %d nói %d byte, còn %d", ErrBadChain, i, ln, len(b))
+	}
+	v := Version{Xmin: xmin, Deleted: f&flagDeleted != 0}
+	if v.Deleted {
+		// Tombstone không mang thân. Nếu nó nói có thì byte trên đĩa
+		// không phải cái mà Encode sinh ra được — cũng do fuzzer tìm
+		// ra, cùng một họ với bit cờ lạ ở trên.
+		if ln != 0 {
+			return Version{}, fmt.Errorf("%w: version %d là tombstone nhưng nói %d byte thân",
+				ErrBadChain, i, ln)
+		}
+	} else {
+		v.Val = b[:ln]
+	}
+	r.b, r.i = b[ln:], i+1
+	return v, nil
+}
+
+func (r *chainReader) end() error {
+	if len(r.b) != 0 {
+		return fmt.Errorf("%w: còn %d byte thừa", ErrBadChain, len(r.b))
+	}
+	return nil
 }
 
 // Visible trả về version mới nhất mà snapshot nhìn thấy.

@@ -281,17 +281,6 @@ func (s *Store) horizon() uint64 {
 
 // ---------- đọc chuỗi version ----------
 
-func (s *Store) chain(key []byte) (Chain, error) {
-	v, err := s.d.Get(key)
-	if errors.Is(err, btree.ErrKeyNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return DecodeChain(v)
-}
-
 // peekDirty tìm giá trị CHƯA COMMIT của khóa trong write set của một
 // transaction khác — tức là dựng lại dirty read bằng tay.
 //
