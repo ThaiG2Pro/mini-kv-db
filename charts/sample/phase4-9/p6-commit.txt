@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/txn
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkCommitPerLevel/read-uncommitted-6         	     200	   2769546 ns/op
+BenchmarkCommitPerLevel/read-uncommitted-6         	     200	   2650892 ns/op
+BenchmarkCommitPerLevel/read-uncommitted-6         	     200	   2358380 ns/op
+BenchmarkCommitPerLevel/read-committed-6           	     200	   2879724 ns/op
+BenchmarkCommitPerLevel/read-committed-6           	     200	   2441940 ns/op
+BenchmarkCommitPerLevel/read-committed-6           	     200	   2542614 ns/op
+BenchmarkCommitPerLevel/repeatable-read-6          	     200	   3542080 ns/op
+BenchmarkCommitPerLevel/repeatable-read-6          	     200	   2774060 ns/op
+BenchmarkCommitPerLevel/repeatable-read-6          	     200	   2899252 ns/op
+BenchmarkCommitPerLevel/serializable-6             	     200	   2880218 ns/op
+BenchmarkCommitPerLevel/serializable-6             	     200	   2992938 ns/op
+BenchmarkCommitPerLevel/serializable-6             	     200	   2519965 ns/op
+BenchmarkAbort/keys=0-6                            	     200	       575.7 ns/op
+BenchmarkAbort/keys=0-6                            	     200	       618.9 ns/op
+BenchmarkAbort/keys=0-6                            	     200	       292.5 ns/op
+BenchmarkAbort/keys=1-6                            	     200	     42393 ns/op
+BenchmarkAbort/keys=1-6                            	     200	     45975 ns/op
+BenchmarkAbort/keys=1-6                            	     200	     41840 ns/op
+BenchmarkAbort/keys=100-6                          	     200	     87918 ns/op
+BenchmarkAbort/keys=100-6                          	     200	    130109 ns/op
+BenchmarkAbort/keys=100-6                          	     200	    103922 ns/op
+PASS
+ok  	minidb/internal/txn	7.894s

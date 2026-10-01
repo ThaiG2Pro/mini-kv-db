@@ -1,0 +1,15 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/pager
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkCommit-6          	      50	   4780843 ns/op
+BenchmarkCommit-6          	      50	   5490122 ns/op
+BenchmarkCommit-6          	      50	   8695161 ns/op
+BenchmarkCommitNoSync-6    	      50	     26472 ns/op
+BenchmarkCommitNoSync-6    	      50	     13492 ns/op
+BenchmarkCommitNoSync-6    	      50	      9184 ns/op
+BenchmarkCommitBatch64-6   	      50	  11432968 ns/op	    178631 ns/page
+BenchmarkCommitBatch64-6   	      50	   8301892 ns/op	    129708 ns/page
+BenchmarkCommitBatch64-6   	      50	   9610265 ns/op	    150153 ns/page
+PASS
+ok  	minidb/internal/pager	2.708s

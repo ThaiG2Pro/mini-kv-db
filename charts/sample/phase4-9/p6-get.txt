@@ -1,0 +1,42 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/txn
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkGetPerLevel/read-uncommitted-6         	   50000	       678.3 ns/op
+BenchmarkGetPerLevel/read-uncommitted-6         	   50000	       735.4 ns/op
+BenchmarkGetPerLevel/read-uncommitted-6         	   50000	       862.0 ns/op
+BenchmarkGetPerLevel/read-committed-6           	   50000	       865.2 ns/op
+BenchmarkGetPerLevel/read-committed-6           	   50000	       808.5 ns/op
+BenchmarkGetPerLevel/read-committed-6           	   50000	      1435 ns/op
+BenchmarkGetPerLevel/repeatable-read-6          	   50000	       597.3 ns/op
+BenchmarkGetPerLevel/repeatable-read-6          	   50000	       637.3 ns/op
+BenchmarkGetPerLevel/repeatable-read-6          	   50000	       658.8 ns/op
+BenchmarkGetPerLevel/serializable-6             	   50000	      1569 ns/op
+BenchmarkGetPerLevel/serializable-6             	   50000	      1528 ns/op
+BenchmarkGetPerLevel/serializable-6             	   50000	      1575 ns/op
+BenchmarkGetChainDepth/depth=1/newest-6         	   50000	       268.0 ns/op
+BenchmarkGetChainDepth/depth=1/newest-6         	   50000	       262.6 ns/op
+BenchmarkGetChainDepth/depth=1/newest-6         	   50000	       296.5 ns/op
+BenchmarkGetChainDepth/depth=1/oldest-6         	   50000	       351.2 ns/op
+BenchmarkGetChainDepth/depth=1/oldest-6         	   50000	       322.6 ns/op
+BenchmarkGetChainDepth/depth=1/oldest-6         	   50000	       290.8 ns/op
+BenchmarkGetChainDepth/depth=8/newest-6         	   50000	       339.8 ns/op
+BenchmarkGetChainDepth/depth=8/newest-6         	   50000	       337.9 ns/op
+BenchmarkGetChainDepth/depth=8/newest-6         	   50000	       311.4 ns/op
+BenchmarkGetChainDepth/depth=8/oldest-6         	   50000	       335.4 ns/op
+BenchmarkGetChainDepth/depth=8/oldest-6         	   50000	       336.7 ns/op
+BenchmarkGetChainDepth/depth=8/oldest-6         	   50000	       362.2 ns/op
+BenchmarkGetChainDepth/depth=32/newest-6        	   50000	       482.2 ns/op
+BenchmarkGetChainDepth/depth=32/newest-6        	   50000	       650.3 ns/op
+BenchmarkGetChainDepth/depth=32/newest-6        	   50000	       535.3 ns/op
+BenchmarkGetChainDepth/depth=32/oldest-6        	   50000	       546.0 ns/op
+BenchmarkGetChainDepth/depth=32/oldest-6        	   50000	       493.4 ns/op
+BenchmarkGetChainDepth/depth=32/oldest-6        	   50000	       491.3 ns/op
+BenchmarkGetChainDepth/depth=60/newest-6        	   50000	       696.1 ns/op
+BenchmarkGetChainDepth/depth=60/newest-6        	   50000	       643.0 ns/op
+BenchmarkGetChainDepth/depth=60/newest-6        	   50000	       679.0 ns/op
+BenchmarkGetChainDepth/depth=60/oldest-6        	   50000	       682.9 ns/op
+BenchmarkGetChainDepth/depth=60/oldest-6        	   50000	       606.4 ns/op
+BenchmarkGetChainDepth/depth=60/oldest-6        	   50000	       658.5 ns/op
+PASS
+ok  	minidb/internal/txn	10.356s

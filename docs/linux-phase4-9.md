@@ -123,6 +123,7 @@ lại.
 
 ## Sau khi đo xong
 
+0. Vẽ biểu đồ cho blog: `uv run charts/plot.py` (xem [`charts/README.md`](../charts/README.md)).
 1. Thêm vào diary của mỗi phase một mục "đo lại trên Linux thuần": dán `env.txt` và bảng tỉ số mới
    đặt cạnh số WSL2. Giữ cả hai để so.
 2. Ghi rõ lệnh, ngày, commit (có sẵn trong `env.txt`) và máy.

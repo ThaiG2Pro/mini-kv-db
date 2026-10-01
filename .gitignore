@@ -21,3 +21,6 @@
 /sqllab
 /tornlab
 /dbcheck
+
+# Ảnh sinh từ charts/plot.py: sinh lại được bất cứ lúc nào
+/charts/out/

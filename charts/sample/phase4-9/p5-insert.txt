@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/db
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkInsertBatch1-6      	     300	   3043324 ns/op	         1.000 fsync/op	         0 fullpg/op	       585.5 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1-6      	     300	   4321561 ns/op	         1.000 fsync/op	         0 fullpg/op	       585.5 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1-6      	     300	   4498927 ns/op	         1.000 fsync/op	         0 fullpg/op	       585.5 logB/op	         0 pagewr/op
+BenchmarkInsertBatch10-6     	     300	    357652 ns/op	         0.1000 fsync/op	         0 fullpg/op	       499.1 logB/op	         0 pagewr/op
+BenchmarkInsertBatch10-6     	     300	   1102011 ns/op	         0.1000 fsync/op	         0 fullpg/op	       499.1 logB/op	         0 pagewr/op
+BenchmarkInsertBatch10-6     	     300	    345757 ns/op	         0.1000 fsync/op	         0 fullpg/op	       499.1 logB/op	         0 pagewr/op
+BenchmarkInsertBatch100-6    	     300	     30986 ns/op	         0.01000 fsync/op	         0 fullpg/op	       490.5 logB/op	         0 pagewr/op
+BenchmarkInsertBatch100-6    	     300	     40262 ns/op	         0.01000 fsync/op	         0 fullpg/op	       490.5 logB/op	         0 pagewr/op
+BenchmarkInsertBatch100-6    	     300	     44129 ns/op	         0.01000 fsync/op	         0 fullpg/op	       490.5 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1000-6   	     300	     22715 ns/op	         0.003333 fsync/op	         0 fullpg/op	       489.9 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1000-6   	     300	     17904 ns/op	         0.003333 fsync/op	         0 fullpg/op	       489.9 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1000-6   	     300	     16729 ns/op	         0.003333 fsync/op	         0 fullpg/op	       489.9 logB/op	         0 pagewr/op
+BenchmarkInsertNoSync-6      	     300	      7393 ns/op	         0 fsync/op	         0 fullpg/op	       585.5 logB/op	         0 pagewr/op
+BenchmarkInsertNoSync-6      	     300	      5135 ns/op	         0 fsync/op	         0 fullpg/op	       585.5 logB/op	         0 pagewr/op
+BenchmarkInsertNoSync-6      	     300	      5407 ns/op	         0 fsync/op	         0 fullpg/op	       585.5 logB/op	         0 pagewr/op
+PASS
+ok  	minidb/internal/db	5.042s

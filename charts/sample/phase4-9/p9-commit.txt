@@ -1,0 +1,3 @@
+# MẪU: hai dòng từ blog/01-commit.md (lượt đầu); 4 và 16 client chưa có số fsync
+clients=1 commits=8194 wal_fsyncs=8194 tps=1638
+clients=64 commits=72578 wal_fsyncs=2643 tps=14515

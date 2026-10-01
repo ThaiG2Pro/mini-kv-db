@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/keys
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkEncode/uint-6      	50480298	        24.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/uint-6      	56333703	        35.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/uint-6      	37323524	        34.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-6     	10370101	       102.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-6     	25820936	        44.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-6     	31332213	        43.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-desc-6         	23495908	        45.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-desc-6         	26464111	        44.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-desc-6         	30991142	        42.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/composite3-6         	22796401	        63.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/composite3-6         	12908204	        93.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/composite3-6         	27388102	        43.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDecode-6                    	 7053800	       216.0 ns/op	     146 B/op	       2 allocs/op
+BenchmarkDecode-6                    	 6523308	       183.8 ns/op	     146 B/op	       2 allocs/op
+BenchmarkDecode-6                    	 6734724	       188.9 ns/op	     146 B/op	       2 allocs/op
+BenchmarkCompareVsBytes/tuple-6      	50400067	        22.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/tuple-6      	47092214	        22.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/tuple-6      	54996850	        23.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/memcmp-6     	354451635	         3.212 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/memcmp-6     	375518284	         3.266 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/memcmp-6     	359325440	         3.643 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	minidb/internal/keys	33.963s

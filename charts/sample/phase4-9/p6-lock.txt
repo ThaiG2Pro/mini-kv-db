@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/lock
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkAcquireUncontended-6   	 4038962	       329.3 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireUncontended-6   	 3265431	       493.7 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireUncontended-6   	 3026280	       364.9 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=1-6         	 2122122	       566.3 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=1-6         	 3013614	       413.3 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=1-6         	 3270727	       348.2 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=16-6        	 1763234	       681.3 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=16-6        	 1708732	       663.2 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=16-6        	 1731303	       668.5 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=256-6       	  209808	      7533 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=256-6       	  188482	      9115 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=256-6       	  231301	      5223 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=1-6       	 3474889	       479.6 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=1-6       	 1458346	       763.1 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=1-6       	 2052453	       673.1 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=16-6      	 1384810	       906.0 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=16-6      	 1243738	      1028 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=16-6      	 1000000	      1536 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=256-6     	   94587	     11857 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=256-6     	  106015	     13082 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=256-6     	  126063	      9468 ns/op	      64 B/op	       1 allocs/op
+BenchmarkOverlaps-6                        	47977105	        22.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOverlaps-6                        	55674628	        22.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOverlaps-6                        	57937304	        21.95 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	minidb/internal/lock	43.797s

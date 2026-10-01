@@ -206,6 +206,7 @@ vị thời gian, và không phụ thuộc máy.
 
 ## Sau khi đo xong
 
+0. Vẽ biểu đồ cho blog: `uv run charts/plot.py` (xem [`charts/README.md`](../charts/README.md)).
 1. Dán `env.txt` vào mục **Môi trường** của `diary/phase0.md` (thay cho phần WSL2, hoặc thêm
    một mục "đo lại trên Linux thuần" — giữ cả hai để so). Tỉ số của phase 1–3 thì dán vào
    `diary/phase1.md`, `phase2.md`, `phase3.md`, kèm một dòng trỏ về `env.txt`.

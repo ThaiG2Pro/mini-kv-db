@@ -183,6 +183,7 @@ docker update --cpuset-cpus="" rl-pg rl-pgm     # nếu đã ghim
 
 ## Sau khi đo xong
 
+0. Vẽ biểu đồ cho blog: `uv run charts/plot.py` (xem [`charts/README.md`](../charts/README.md)).
 1. Thêm một mục mới vào `diary/phase9.md`: **"bảng 8, lượt Linux thuần"**. Dán nguyên `env.txt`
    và `hashjoin.txt`. Giữ lại số của WSL2 để so.
 2. So phép B và phép D giữa hai máy. **Độ dốc ns/probe** đổi theo máy là chuyện bình thường. Điều

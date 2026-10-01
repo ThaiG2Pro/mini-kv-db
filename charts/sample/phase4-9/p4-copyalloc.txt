@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/btree
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkCopyVsAlloc/alloc+copy-6         	 1765395	       636.2 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkCopyVsAlloc/alloc+copy-6         	 1391913	       798.0 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkCopyVsAlloc/alloc+copy-6         	 1978754	       732.7 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkCopyVsAlloc/copy-6               	60343340	        20.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCopyVsAlloc/copy-6               	45416533	        22.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCopyVsAlloc/copy-6               	72701641	        18.71 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	minidb/internal/btree	11.569s

@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/page
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkVerifyFullPage-6      	    2000	      4227 ns/op	       814.0 slot
+BenchmarkVerifyFullPage-6      	    2000	      4292 ns/op	       814.0 slot
+BenchmarkVerifyFullPage-6      	    2000	      4625 ns/op	       814.0 slot
+BenchmarkVerifyRefFullPage-6   	    2000	     29895 ns/op	       814.0 slot
+BenchmarkVerifyRefFullPage-6   	    2000	     24596 ns/op	       814.0 slot
+BenchmarkVerifyRefFullPage-6   	    2000	     22072 ns/op	       814.0 slot
+PASS
+ok  	minidb/internal/page	0.205s

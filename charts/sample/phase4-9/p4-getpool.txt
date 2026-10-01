@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/btree
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkGetPool32-6     	   50000	      2277 ns/op	        39.82 %hit	         1.805 reads/op
+BenchmarkGetPool32-6     	   50000	      1906 ns/op	        39.82 %hit	         1.805 reads/op
+BenchmarkGetPool32-6     	   50000	      2409 ns/op	        39.82 %hit	         1.805 reads/op
+BenchmarkGetPool128-6    	   50000	      2474 ns/op	        55.44 %hit	         1.337 reads/op
+BenchmarkGetPool128-6    	   50000	      4697 ns/op	        55.44 %hit	         1.337 reads/op
+BenchmarkGetPool128-6    	   50000	      3797 ns/op	        55.44 %hit	         1.337 reads/op
+BenchmarkGetPool512-6    	   50000	      3966 ns/op	        68.93 %hit	         0.9320 reads/op
+BenchmarkGetPool512-6    	   50000	      2314 ns/op	        68.93 %hit	         0.9320 reads/op
+BenchmarkGetPool512-6    	   50000	      2550 ns/op	        68.93 %hit	         0.9320 reads/op
+BenchmarkGetPool2048-6   	   50000	      3658 ns/op	        77.40 %hit	         0.6781 reads/op
+BenchmarkGetPool2048-6   	   50000	      3237 ns/op	        77.40 %hit	         0.6781 reads/op
+BenchmarkGetPool2048-6   	   50000	      3499 ns/op	        77.40 %hit	         0.6781 reads/op
+BenchmarkGetPool4096-6   	   50000	      3304 ns/op	        88.74 %hit	         0.3377 reads/op
+BenchmarkGetPool4096-6   	   50000	      3247 ns/op	        88.74 %hit	         0.3377 reads/op
+BenchmarkGetPool4096-6   	   50000	      3327 ns/op	        88.74 %hit	         0.3377 reads/op
+BenchmarkGetPool8192-6   	   50000	      1706 ns/op	       100.0 %hit	         0 reads/op
+BenchmarkGetPool8192-6   	   50000	      1555 ns/op	       100.0 %hit	         0 reads/op
+BenchmarkGetPool8192-6   	   50000	      1774 ns/op	       100.0 %hit	         0 reads/op
+PASS
+ok  	minidb/internal/btree	11.433s

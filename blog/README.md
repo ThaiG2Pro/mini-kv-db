@@ -42,5 +42,7 @@ reallab/q.sh pg <<< "select version();"
 | 12 | [Cùng một biến, hai database, chênh nhau 575 lần](12-ai-goi-write.md) | `flush_log_at_trx_commit=0` thật ra mất bao nhiêu? | Đếm nhịp `write()` của redo mỗi 5ms; tắt `log_writer` của MySQL: mất 6 → 3447 | 5, 9 |
 | 13 | [Chỗ chậm không nằm ở chỗ bạn đoán](13-cho-cham-khong-o-cho-doan.md) | Tối ưu theo trực giác thì sai ở đâu? Đo thế nào trên một máy ồn? | Chuỗi 60 phiên bản: profile, chép vs cấp phát, A/B theo cặp: 5213 → 708ns | 6, 9 |
 
+Biểu đồ minh hoạ (SVG/PNG, sáng/tối, kèm CSV) sinh từ kết quả bench bằng `uv run charts/plot.py`: xem [`charts/README.md`](../charts/README.md).
+
 Số đo trong các bài lấy từ [`diary/phase9.md`](../diary/phase9.md) và các script ở [`lab/`](lab/), nơi có lệnh và output gốc.
 Máy đo là một laptop chạy WSL2 (i5-1235U), nên số tuyệt đối không giống máy chủ thật. Chỉ tỉ số là đáng tin.
