@@ -1,0 +1,14 @@
+NOTICE:  table "c1" does not exist, skipping
+== commit sau MỖI dòng (5000 commit)
+Time: 4074.057 ms (00:04.074)
+== commit mỗi 100 dòng (50 commit)
+Time: 67.905 ms
+== commit MỘT lần (1 commit)
+Time: 24.907 ms
+== commit sau mỗi dòng, synchronous_commit = off (không chờ fsync)
+Time: 0.197 ms
+Time: 50.933 ms
+clients=1 commits=5257 wal_fsyncs=5257 tps=1051
+clients=4 commits=13930 wal_fsyncs=6962 tps=2786
+clients=16 commits=57496 wal_fsyncs=7189 tps=11499
+clients=64 commits=226418 wal_fsyncs=7089 tps=45283

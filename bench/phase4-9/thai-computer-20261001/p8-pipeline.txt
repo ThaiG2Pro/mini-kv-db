@@ -1,0 +1,15 @@
+dữ liệu: ev 20000 hàng, dim 200 hàng, index ev_kind(kind), buffer pool 1024 frame
+
+=== 6. chi phí front-end: một câu SQL tốn bao nhiêu TRƯỚC khi chạm dữ liệu
+
+câu                                              lex(µs)    parse*      bind  optimize      plan    thi hành
+SELECT id, city FROM ev WHERE id = 12345            0.51      0.64      0.49      0.07      1.18       0.99µs
+SELECT city FROM ev WHERE kind = 3 AND id < 2…      0.56      0.71      0.63      0.07      1.82      99.08µs
+SELECT ev.city, dim.name FROM ev JOIN dim ON …      1.13      1.36      0.83      0.60      1.67     112.96µs
+
+    Đọc: parse* ĐÃ BAO GỒM lex (parser lex theo yêu cầu, không cắt sẵn cả câu),
+    nên hai cột đầu không trừ được cho nhau. Với một truy vấn ĐIỂM, front-end là phần
+    đáng kể của cả câu — và nó lặp lại y nguyên mỗi lần chạy cùng câu ấy. Đó
+    chính là lý do prepared statement tồn tại, và lý do mọi database thật đều
+    có plan cache.
+

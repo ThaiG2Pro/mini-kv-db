@@ -1,0 +1,9 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/query
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkSeqStep-16    	      30	  16807918 ns/op	     20000 rows
+BenchmarkSeqStep-16    	      30	  18118181 ns/op	     20000 rows
+BenchmarkSeqStep-16    	      30	  16827877 ns/op	     20000 rows
+PASS
+ok  	minidb/internal/query	7.046s

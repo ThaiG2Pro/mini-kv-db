@@ -1,0 +1,36 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/page
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkInsert-16               	39024169	        29.26 ns/op	       1 B/op	       0 allocs/op
+BenchmarkInsert-16               	40825935	        29.25 ns/op	       1 B/op	       0 allocs/op
+BenchmarkInsert-16               	40273886	        29.61 ns/op	       1 B/op	       0 allocs/op
+BenchmarkInsert-16               	40408184	        29.24 ns/op	       1 B/op	       0 allocs/op
+BenchmarkInsert-16               	40408744	        29.41 ns/op	       1 B/op	       0 allocs/op
+BenchmarkGet-16                  	100000000	        11.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet-16                  	91522087	        11.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet-16                  	267494031	         4.353 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet-16                  	271005568	         4.385 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet-16                  	272014413	         4.381 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompact-16              	 2572737	       490.6 ns/op	8348.83 MB/s	        29.00 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompact-16              	 2427657	       483.9 ns/op	8464.39 MB/s	        29.00 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompact-16              	 2431377	       477.7 ns/op	8573.82 MB/s	        29.00 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompact-16              	 2495606	       462.9 ns/op	8848.11 MB/s	        29.00 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompact-16              	 2306056	       498.6 ns/op	8214.60 MB/s	        29.00 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompactScrambled-16     	  437192	      2682 ns/op	       300.0 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompactScrambled-16     	  448466	      2712 ns/op	       300.0 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompactScrambled-16     	  455996	      2683 ns/op	       300.0 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompactScrambled-16     	  443058	      2694 ns/op	       300.0 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkCompactScrambled-16     	  442591	      2673 ns/op	       300.0 cell-sống	       0 B/op	       0 allocs/op
+BenchmarkVerifyFullPage-16       	  465781	      2295 ns/op	       814.0 slot	       0 B/op	       0 allocs/op
+BenchmarkVerifyFullPage-16       	  485419	      2298 ns/op	       814.0 slot	       0 B/op	       0 allocs/op
+BenchmarkVerifyFullPage-16       	  477242	      2294 ns/op	       814.0 slot	       0 B/op	       0 allocs/op
+BenchmarkVerifyFullPage-16       	  523573	      2298 ns/op	       814.0 slot	       0 B/op	       0 allocs/op
+BenchmarkVerifyFullPage-16       	  444633	      2298 ns/op	       814.0 slot	       0 B/op	       0 allocs/op
+BenchmarkVerifyRefFullPage-16    	   81429	     13979 ns/op	       814.0 slot	   20576 B/op	       4 allocs/op
+BenchmarkVerifyRefFullPage-16    	   82462	     13899 ns/op	       814.0 slot	   20576 B/op	       4 allocs/op
+BenchmarkVerifyRefFullPage-16    	   86752	     13987 ns/op	       814.0 slot	   20576 B/op	       4 allocs/op
+BenchmarkVerifyRefFullPage-16    	   75812	     22651 ns/op	       814.0 slot	   20576 B/op	       4 allocs/op
+BenchmarkVerifyRefFullPage-16    	   41337	     28542 ns/op	       814.0 slot	   20576 B/op	       4 allocs/op
+PASS
+ok  	minidb/internal/page	673.738s

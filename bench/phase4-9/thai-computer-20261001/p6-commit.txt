@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/txn
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkCommitPerLevel/read-uncommitted-16         	     500	    654456 ns/op
+BenchmarkCommitPerLevel/read-uncommitted-16         	     500	    742070 ns/op
+BenchmarkCommitPerLevel/read-uncommitted-16         	     500	    814061 ns/op
+BenchmarkCommitPerLevel/read-committed-16           	     500	    830974 ns/op
+BenchmarkCommitPerLevel/read-committed-16           	     500	    840608 ns/op
+BenchmarkCommitPerLevel/read-committed-16           	     500	    828012 ns/op
+BenchmarkCommitPerLevel/repeatable-read-16          	     500	    842577 ns/op
+BenchmarkCommitPerLevel/repeatable-read-16          	     500	    830632 ns/op
+BenchmarkCommitPerLevel/repeatable-read-16          	     500	    846745 ns/op
+BenchmarkCommitPerLevel/serializable-16             	     500	    822181 ns/op
+BenchmarkCommitPerLevel/serializable-16             	     500	    827714 ns/op
+BenchmarkCommitPerLevel/serializable-16             	     500	    849619 ns/op
+BenchmarkAbort/keys=0-16                            	     500	       513.9 ns/op
+BenchmarkAbort/keys=0-16                            	     500	       256.9 ns/op
+BenchmarkAbort/keys=0-16                            	     500	       202.5 ns/op
+BenchmarkAbort/keys=1-16                            	     500	     13344 ns/op
+BenchmarkAbort/keys=1-16                            	     500	     12107 ns/op
+BenchmarkAbort/keys=1-16                            	     500	     18168 ns/op
+BenchmarkAbort/keys=100-16                          	     500	     48169 ns/op
+BenchmarkAbort/keys=100-16                          	     500	     54165 ns/op
+BenchmarkAbort/keys=100-16                          	     500	     49183 ns/op
+PASS
+ok  	minidb/internal/txn	5.369s

@@ -1,0 +1,105 @@
+
+== 1. điểm hoà vốn selectivity (50000 hàng, 30 lần mỗi truy vấn) ==
+
+hằng số đo được: một bước quét 408 ns, một bước index 236 ns
+  một lần tra bảng: 2202 ns nếu khóa NHẢY LUNG TUNG, 1407 ns nếu khóa TĂNG DẦN (1.6x)
+  -> CFetch/CSeq = 5.4x / 3.4x (mô hình mặc định trong code đoán 20.0x)
+  -> điểm hoà vốn TÍNH RA: 16.74% / 24.84% (mô hình mặc định: 4.85%)
+
+     sel    hàng     seq µs   index µs    only µs  idx/seq only/seq  planner(đo)   planner(đoán) thật
+    0.1%      50    21173.7       50.5       13.0     0.00     0.00  IndexScan     IndexScan     IndexScan
+    0.5%     250    21132.5      277.5       59.3     0.01     0.00  IndexScan     IndexScan     IndexScan
+    1.0%     500    21263.6      464.4      153.2     0.02     0.01  IndexScan     IndexScan     IndexScan
+    2.5%    1250    21154.2     1249.6      323.1     0.06     0.02  IndexScan     IndexScan     IndexScan
+    5.0%    2500    21262.6     2537.3      643.6     0.12     0.03  IndexScan     SeqScan       IndexScan  <- planner(đoán) CHỌN SAI
+   10.0%    5000    21250.5     4916.4     1283.3     0.23     0.06  IndexScan     SeqScan       IndexScan  <- planner(đoán) CHỌN SAI
+   25.0%   12500    21513.4    13270.3     3126.5     0.62     0.15  SeqScan       SeqScan       IndexScan  <- planner(đoán) CHỌN SAI  <- planner(đo) CŨNG CHỌN SAI
+   50.0%   25000    21615.7    26300.9     6526.7     1.22     0.30  SeqScan       SeqScan       SeqScan  <- ĐỔI VAI
+  100.0%   50000    22848.6    52425.8    13368.3     2.29     0.59  SeqScan       SeqScan       SeqScan
+
+Đọc bảng:
+  · idx/seq < 1 là index thắng; only/seq < 1 ở MỌI dòng — index phủ không có điểm hoà vốn.
+  · số entry đã chạm đổi vai ở 50%; THỜI GIAN đổi vai ở 41.0% — con số này
+    nội suy từ chính bảng trên, không lấy từ mô hình nào.
+  · ba mô hình đoán điểm ấy là 16.7% (CFetch đo bằng khóa nhảy lung tung),
+    24.8% (CFetch đo bằng khóa tăng dần) và 4.9% (hằng số đoán sẵn trong code).
+    Số đo thật 41.0% nằm GẦN cái thứ hai. Lý do: một index scan tra bảng theo
+    thứ tự index, và ở đây thứ tự ấy tương quan với thứ tự primary key, nên mỗi
+    lần tra phần lớn trúng page vừa nạp. Đo CFetch bằng khóa nhảy lung tung là
+    đo đúng cái ca xấu nhất và đắt hơn 1.6x — chính vì thế planner(đo) vẫn chọn
+    sai ở dải quanh 17%. Postgres giải bằng một thống kê riêng cho việc này:
+    `correlation`, tương quan giữa thứ tự index và thứ tự vật lý của hàng.
+  · cột planner(đoán) dùng CFetch/CSeq = 20 viết sẵn trong code; số đo là 5.4.
+    Lệch ấy làm planner chọn seq ở dải mà index còn thắng vài lần. Đúng là
+    random_page_cost của Postgres, và là lý do mọi hướng dẫn tuning bảo hạ nó
+    xuống trên SSD.
+
+== 1. điểm hoà vốn selectivity (50000 hàng, 30 lần mỗi truy vấn) ==
+
+hằng số đo được: một bước quét 389 ns, một bước index 236 ns
+  một lần tra bảng: 2156 ns nếu khóa NHẢY LUNG TUNG, 2423 ns nếu khóa TĂNG DẦN (0.9x)
+  -> CFetch/CSeq = 5.5x / 6.2x (mô hình mặc định trong code đoán 20.0x)
+  -> điểm hoà vốn TÍNH RA: 16.26% / 14.62% (mô hình mặc định: 4.85%)
+
+     sel    hàng     seq µs   index µs    only µs  idx/seq only/seq  planner(đo)   planner(đoán) thật
+    0.1%      50    21010.9       49.9       34.8     0.00     0.00  IndexScan     IndexScan     IndexScan
+    0.5%     250    20915.7      267.0       59.3     0.01     0.00  IndexScan     IndexScan     IndexScan
+    1.0%     500    20981.2      467.1      147.9     0.02     0.01  IndexScan     IndexScan     IndexScan
+    2.5%    1250    21023.4     1237.7      330.5     0.06     0.02  IndexScan     IndexScan     IndexScan
+    5.0%    2500    20925.5     2420.3      688.2     0.12     0.03  IndexScan     SeqScan       IndexScan  <- planner(đoán) CHỌN SAI
+   10.0%    5000    21116.1     4921.9     1282.5     0.23     0.06  IndexScan     SeqScan       IndexScan  <- planner(đoán) CHỌN SAI
+   25.0%   12500    21224.7    13167.1     3202.2     0.62     0.15  SeqScan       SeqScan       IndexScan  <- planner(đoán) CHỌN SAI  <- planner(đo) CŨNG CHỌN SAI
+   50.0%   25000    21521.4    26321.9     6433.1     1.22     0.30  SeqScan       SeqScan       SeqScan  <- ĐỔI VAI
+  100.0%   50000    22321.3    52369.9    13349.1     2.35     0.60  SeqScan       SeqScan       SeqScan
+
+Đọc bảng:
+  · idx/seq < 1 là index thắng; only/seq < 1 ở MỌI dòng — index phủ không có điểm hoà vốn.
+  · số entry đã chạm đổi vai ở 50%; THỜI GIAN đổi vai ở 40.7% — con số này
+    nội suy từ chính bảng trên, không lấy từ mô hình nào.
+  · ba mô hình đoán điểm ấy là 16.3% (CFetch đo bằng khóa nhảy lung tung),
+    14.6% (CFetch đo bằng khóa tăng dần) và 4.9% (hằng số đoán sẵn trong code).
+    Số đo thật 40.7% nằm GẦN cái thứ hai. Lý do: một index scan tra bảng theo
+    thứ tự index, và ở đây thứ tự ấy tương quan với thứ tự primary key, nên mỗi
+    lần tra phần lớn trúng page vừa nạp. Đo CFetch bằng khóa nhảy lung tung là
+    đo đúng cái ca xấu nhất và đắt hơn 0.9x — chính vì thế planner(đo) vẫn chọn
+    sai ở dải quanh 16%. Postgres giải bằng một thống kê riêng cho việc này:
+    `correlation`, tương quan giữa thứ tự index và thứ tự vật lý của hàng.
+  · cột planner(đoán) dùng CFetch/CSeq = 20 viết sẵn trong code; số đo là 5.5.
+    Lệch ấy làm planner chọn seq ở dải mà index còn thắng vài lần. Đúng là
+    random_page_cost của Postgres, và là lý do mọi hướng dẫn tuning bảo hạ nó
+    xuống trên SSD.
+
+== 1. điểm hoà vốn selectivity (50000 hàng, 30 lần mỗi truy vấn) ==
+
+hằng số đo được: một bước quét 389 ns, một bước index 233 ns
+  một lần tra bảng: 2243 ns nếu khóa NHẢY LUNG TUNG, 1421 ns nếu khóa TĂNG DẦN (1.6x)
+  -> CFetch/CSeq = 5.8x / 3.6x (mô hình mặc định trong code đoán 20.0x)
+  -> điểm hoà vốn TÍNH RA: 15.73% / 23.56% (mô hình mặc định: 4.85%)
+
+     sel    hàng     seq µs   index µs    only µs  idx/seq only/seq  planner(đo)   planner(đoán) thật
+    0.1%      50    20850.9       50.4       25.0     0.00     0.00  IndexScan     IndexScan     IndexScan
+    0.5%     250    21058.7      262.6       59.0     0.01     0.00  IndexScan     IndexScan     IndexScan
+    1.0%     500    20898.4      464.5      149.4     0.02     0.01  IndexScan     IndexScan     IndexScan
+    2.5%    1250    20916.8     1212.6      345.4     0.06     0.02  IndexScan     IndexScan     IndexScan
+    5.0%    2500    20985.9     2497.0      647.9     0.12     0.03  IndexScan     SeqScan       IndexScan  <- planner(đoán) CHỌN SAI
+   10.0%    5000    21214.6     5066.3     1263.6     0.24     0.06  IndexScan     SeqScan       IndexScan  <- planner(đoán) CHỌN SAI
+   25.0%   12500    21116.1    13292.2     3172.4     0.63     0.15  SeqScan       SeqScan       IndexScan  <- planner(đoán) CHỌN SAI  <- planner(đo) CŨNG CHỌN SAI
+   50.0%   25000    21412.3    25988.5     6385.4     1.21     0.30  SeqScan       SeqScan       SeqScan  <- ĐỔI VAI
+  100.0%   50000    22240.6    51945.9    13175.4     2.34     0.59  SeqScan       SeqScan       SeqScan
+
+Đọc bảng:
+  · idx/seq < 1 là index thắng; only/seq < 1 ở MỌI dòng — index phủ không có điểm hoà vốn.
+  · số entry đã chạm đổi vai ở 50%; THỜI GIAN đổi vai ở 40.9% — con số này
+    nội suy từ chính bảng trên, không lấy từ mô hình nào.
+  · ba mô hình đoán điểm ấy là 15.7% (CFetch đo bằng khóa nhảy lung tung),
+    23.6% (CFetch đo bằng khóa tăng dần) và 4.9% (hằng số đoán sẵn trong code).
+    Số đo thật 40.9% nằm GẦN cái thứ hai. Lý do: một index scan tra bảng theo
+    thứ tự index, và ở đây thứ tự ấy tương quan với thứ tự primary key, nên mỗi
+    lần tra phần lớn trúng page vừa nạp. Đo CFetch bằng khóa nhảy lung tung là
+    đo đúng cái ca xấu nhất và đắt hơn 1.6x — chính vì thế planner(đo) vẫn chọn
+    sai ở dải quanh 16%. Postgres giải bằng một thống kê riêng cho việc này:
+    `correlation`, tương quan giữa thứ tự index và thứ tự vật lý của hàng.
+  · cột planner(đoán) dùng CFetch/CSeq = 20 viết sẵn trong code; số đo là 5.8.
+    Lệch ấy làm planner chọn seq ở dải mà index còn thắng vài lần. Đúng là
+    random_page_cost của Postgres, và là lý do mọi hướng dẫn tuning bảo hạ nó
+    xuống trên SSD.

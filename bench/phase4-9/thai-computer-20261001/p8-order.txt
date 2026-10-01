@@ -1,0 +1,14 @@
+dữ liệu: ev 20000 hàng, dim 200 hàng, index ev_kind(kind), buffer pool 1024 frame
+
+=== 5. bỏ bước ORDER BY nhờ thứ tự của index (nợ P7-9)
+
+câu                                               LIMIT     có Sort     bỏ Sort    tỉ số
+SELECT id, kind FROM ev ORDER BY kind                 -     14.659ms      4.699ms    3.12x
+SELECT id, kind FROM ev ORDER BY kind LIMIT 10       10      9.824ms      0.003ms 3334.74x
+SELECT id, city FROM ev ORDER BY id                   -     23.058ms      7.362ms    3.13x
+SELECT id, city FROM ev ORDER BY id LIMIT 10         10     14.617ms      0.004ms 3457.16x
+
+    Đọc: với LIMIT thì tỉ số không còn là một hệ số mà là một BẬC — có Sort thì
+    phải đọc và sắp cả bảng để biết 10 hàng đầu; bỏ được Sort thì đọc đúng 10
+    hàng rồi dừng. Đó là chỗ toán tử CHẶN đắt hơn nhiều so với chi phí sắp xếp.
+

@@ -1,0 +1,127 @@
+
+== 3. hình dạng byte của khóa composite ==
+
+a) cùng một schema (city ASC, age DESC), thứ tự byte = thứ tự logic:
+  (HN, 30)    -> 06484e0000fb7fffffffffffffe1
+  (HN, 25)    -> 06484e0000fb7fffffffffffffe6
+  (HN, -5)    -> 06484e0000fb8000000000000004
+  (HNX, 30)   -> 06484e580000fb7fffffffffffffe1
+  (NULL, 30)  -> 01fb7fffffffffffffe1
+
+  age DESC hiện ra thành phép BÙ TỪNG BYTE: 30 thành ...ff-e1, 25 thành ...ff-e6.
+  Vì bù đảo thứ tự byte, DESC không cần một phép so riêng — và cùng phép bù ấy
+  đẩy NULL xuống cuối, tức DESC ở đây là NULLS LAST, không phải do chọn mà do hình.
+
+b) vì sao index chỉ dùng được cho TIỀN TỐ BÊN TRÁI:
+   index (city, age). Điều kiện city='HN' là một khoảng liên tục:
+     [06484e0000, 06484e0001)
+   Điều kiện age=30 KHÔNG là khoảng nào cả — byte của age nằm SAU
+   byte của city, nên các hàng age=30 rải khắp cây:
+     (DN, 30) -> 06444e0000fb7fffffffffffffe1
+     (HN, 30) -> 06484e0000fb7fffffffffffffe1
+     (SG, 30) -> 0653470000fb7fffffffffffffe1
+
+   Đây là toàn bộ nội dung của 'leftmost prefix rule'. Nó không phải một quy ước của
+   MySQL — nó là hệ quả của việc phép so duy nhất mà B+Tree biết là memcmp.
+
+c) escape byte 0x00, và vì sao tiền tố tự đứng trước:
+     "a"      -> 06610000
+     "a\x00"  -> 066100ff0000
+     "a\x00b" -> 066100ff620000
+     "ab"     -> 0661620000
+     "b"      -> 06620000
+   Dấu kết thúc 00-00 nhỏ hơn mọi byte nội dung, nên "a" < "ab" mà không cần
+   lưu độ dài. Lưu độ dài lên trước là để độ dài tham gia phép so, và "aa" sẽ
+   đứng SAU "b" — một index sai thứ tự mà không test nào ngoài fuzz bắt được.
+
+== 1. điểm hoà vốn selectivity (20000 hàng, 20 lần mỗi truy vấn) ==
+
+hằng số đo được: một bước quét 409 ns, một bước index 217 ns
+  một lần tra bảng: 2570 ns nếu khóa NHẢY LUNG TUNG, 1127 ns nếu khóa TĂNG DẦN (2.3x)
+  -> CFetch/CSeq = 6.3x / 2.8x (mô hình mặc định trong code đoán 20.0x)
+  -> điểm hoà vốn TÍNH RA: 14.68% / 30.44% (mô hình mặc định: 4.85%)
+
+     sel    hàng     seq µs   index µs    only µs  idx/seq only/seq  planner(đo)   planner(đoán) thật
+    0.1%      20     8261.4       22.2        5.9     0.00     0.00  IndexScan     IndexScan     IndexScan
+    0.5%     100     8120.2      137.0       25.5     0.02     0.00  IndexScan     IndexScan     IndexScan
+    1.0%     200     7849.5      187.1       47.6     0.02     0.01  IndexScan     IndexScan     IndexScan
+    2.5%     500     8164.4      567.8      145.5     0.07     0.02  IndexScan     IndexScan     IndexScan
+    5.0%    1000     7888.1     1005.0      228.1     0.13     0.03  IndexScan     SeqScan       IndexScan  <- planner(đoán) CHỌN SAI
+   10.0%    2000     8164.5     2058.7      485.4     0.25     0.06  IndexScan     SeqScan       IndexScan  <- planner(đoán) CHỌN SAI
+   25.0%    5000     8308.7     5025.4     1195.7     0.60     0.14  SeqScan       SeqScan       IndexScan  <- planner(đoán) CHỌN SAI  <- planner(đo) CŨNG CHỌN SAI
+   50.0%   10000     7926.4    10434.1     2557.1     1.32     0.32  SeqScan       SeqScan       SeqScan  <- ĐỔI VAI
+  100.0%   20000     8312.0    20747.4     5030.6     2.50     0.61  SeqScan       SeqScan       SeqScan
+
+Đọc bảng:
+  · idx/seq < 1 là index thắng; only/seq < 1 ở MỌI dòng — index phủ không có điểm hoà vốn.
+  · số entry đã chạm đổi vai ở 50%; THỜI GIAN đổi vai ở 38.9% — con số này
+    nội suy từ chính bảng trên, không lấy từ mô hình nào.
+  · ba mô hình đoán điểm ấy là 14.7% (CFetch đo bằng khóa nhảy lung tung),
+    30.4% (CFetch đo bằng khóa tăng dần) và 4.9% (hằng số đoán sẵn trong code).
+    Số đo thật 38.9% nằm GẦN cái thứ hai. Lý do: một index scan tra bảng theo
+    thứ tự index, và ở đây thứ tự ấy tương quan với thứ tự primary key, nên mỗi
+    lần tra phần lớn trúng page vừa nạp. Đo CFetch bằng khóa nhảy lung tung là
+    đo đúng cái ca xấu nhất và đắt hơn 2.3x — chính vì thế planner(đo) vẫn chọn
+    sai ở dải quanh 15%. Postgres giải bằng một thống kê riêng cho việc này:
+    `correlation`, tương quan giữa thứ tự index và thứ tự vật lý của hàng.
+  · cột planner(đoán) dùng CFetch/CSeq = 20 viết sẵn trong code; số đo là 6.3.
+    Lệch ấy làm planner chọn seq ở dải mà index còn thắng vài lần. Đúng là
+    random_page_cost của Postgres, và là lý do mọi hướng dẫn tuning bảo hạ nó
+    xuống trên SSD.
+
+== 2. cái giá của việc CÓ index (đường ghi) ==
+
+   index chèn µs/hàng  sửa µs/hàng so 0 index  ghi idx/chèn   ghi idx/sửa
+       0         6.44         9.01       1.00x           0.0           0.0
+       1        11.11         8.50       1.73x           1.0           0.0
+       2        15.98         9.01       2.48x           2.0           0.0
+       3        21.63        22.13       3.36x           3.0           2.0
+
+Đọc bảng, cột CHÈN: mỗi index thêm vào làm phép chèn đắt thêm gần đúng một lần,
+và cột 'ghi idx/chèn' nói vì sao — một hàng mới thì MỌI index đều phải có thêm
+một mục. Ở đây không có gì để tránh: đó là cái giá không thương lượng của index.
+
+Đọc bảng, cột SỬA — và đây là chỗ bản đầu của bảng này ĐỌC SAI dữ liệu của chính
+nó. Lời cũ viết: 'sửa vẫn đắt lên theo số index, vì Upsert phải ĐỌC hàng cũ để
+biết mục nào cần xoá'. Dữ liệu bác bỏ cái nhân quả ấy: ở nIdx = 1 và 2 giá gần
+như không đổi so với nIdx = 0 (chênh trong khoảng nhiễu, và không đơn điệu giữa
+các lần chạy), rồi nhảy hẳn một bậc ở nIdx = 3.
+
+Cột 'ghi idx/sửa' chỉ đúng thủ phạm, và nó là số ĐO chứ không phải lập luận:
+0, 0, 0, 2. Ba dòng đầu payload không nằm trong index nào nên Upsert không ghi
+mục index nào cả. Dòng cuối thì cols[2] == "payload", tức cột bị sửa CHÍNH LÀ
+cột được index — và con số 2, chứ không phải 1, là vì một mục index không sửa
+được tại chỗ: khóa của nó CHỨA giá trị cũ, nên phải xoá mục cũ rồi chèn mục mới.
+Đổi giá trị một cột được index là đổi VỊ TRÍ của nó trong cây.
+
+Nên kết luận đúng ngược với kết luận cũ: giá của một UPDATE không do SỐ index của
+bảng quyết định, mà do số index CÓ CHỨA CỘT BỊ ĐỔI — nhân hai. Việc đọc hàng cũ có
+thật và không tránh được, nhưng nó rẻ tới mức không hiện ra trong phép đo. Đây
+đúng là tối ưu HOT (heap-only tuple) của Postgres: một update không đổi cột nào
+được index thì không sinh mục index nào — và cột 'ghi idx/sửa' = 0 là bằng
+chứng rằng tầng bảng ở đây cũng làm thế.
+
+== 4. ước lượng vs thật: cái giá của mô hình phân bố đều ==
+
+điều kiện                   ước lượng       thật      lệch  planner chọn
+kind < 10 (đều)                   200        200      1.0x  IndexScan
+kind < 500 (đều)                10010      10000      1.0x  SeqScan
+city = 'HN' (lệch 99%)            204      19800     97.0x  IndexScan
+city = 'c001' (đuôi)              204          2      0.0x  IndexScan
+
+Đọc bảng: hai dòng đầu (cột phân bố đều) khớp tới 1.0x; hai dòng sau lệch hàng chục
+lần. Hậu quả không nằm ở con số mà ở cột cuối: với city='HN' — 99% cả bảng —
+planner vẫn chọn IndexScan, tức là quét index rồi tra bảng 4950 lần để lấy gần
+như mọi hàng. Đó là kế hoạch TỆ NHẤT có thể, và nó được chọn không phải vì mô hình
+chi phí sai mà vì ước lượng số hàng sai. Histogram là chỗ Postgres bỏ tiền vào,
+và cột 'lệch' là lý do nó phải bỏ.
+
+== 5. LIMIT 1 trên khoảng rộng — cái mà nợ P6-4 mua được ==
+
+truy vấn                           µs
+LIMIT 1                           1.2
+quét cả 20000 hàng             7371.4
+
+tỉ số = 6052x. Bản materialize của phase 6 đọc CẢ khoảng trước khi gọi fn lần đầu,
+nên với nó hai dòng trên BẰNG NHAU — tỉ số 1x. Con số 6052x là toàn bộ giá trị của
+việc đổi Scan từ 'trả về một mảng' sang 'trả về một cursor'.

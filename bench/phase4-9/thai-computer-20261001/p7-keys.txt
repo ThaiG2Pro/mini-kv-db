@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/keys
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkEncode/uint-16       	84137128	        12.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/uint-16       	83089240	        13.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/uint-16       	84718533	        12.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-16      	36579152	        32.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-16      	31985684	        33.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-16      	32781490	        33.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-desc-16 	32199012	        33.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-desc-16 	31811308	        33.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/str16-desc-16 	30969630	        33.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/composite3-16 	41755208	        28.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/composite3-16 	38012427	        28.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncode/composite3-16 	38324884	        27.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDecode-16            	11095011	        99.68 ns/op	     146 B/op	       2 allocs/op
+BenchmarkDecode-16            	10877912	       100.0 ns/op	     146 B/op	       2 allocs/op
+BenchmarkDecode-16            	11711937	       100.2 ns/op	     146 B/op	       2 allocs/op
+BenchmarkCompareVsBytes/tuple-16         	75753572	        18.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/tuple-16         	79134522	        14.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/tuple-16         	84954013	        14.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/memcmp-16        	480435816	         2.447 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/memcmp-16        	480305325	         2.461 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareVsBytes/memcmp-16        	489820172	         2.468 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	minidb/internal/keys	28.196s

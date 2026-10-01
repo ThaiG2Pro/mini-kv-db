@@ -1,0 +1,40 @@
+iolab — Phase 0
+máy: thai-computer | kernel: 7.1.3-2-cachyos | go1.26.2
+thư mục: /home/thai/my-project/mini-kv-db/data/iolab | page 4096B | file 512MB | repeat 3 | O_DIRECT true
+LƯU Ý: O_DIRECT bỏ qua page cache -> phép đo 'CACHE NÓNG' sẽ không nóng. Đó là chủ ý.
+
+=== 1. write() KHÔNG phải durability ===
+phép đo                                    ops/s trung bình       p50       p99     MB/s  ghi chú
+write 4KB (không fsync)                    20284    49.2µs      34µs   173.9µs     83.1  O_DIRECT: qua mặt page cache, VẪN chưa durable (write cache của ổ)
+write 4KB + fsync mỗi lần                   1193     838µs     804µs   1.496ms      4.9  = trần commit/s của 1 luồng
+fsync khi không có gì bẩn                 630911     1.5µs     1.2µs     2.1µs   2584.2  overhead nền của syscall
+tạo file + fsync file + fsync dir            650   1.539ms   1.431ms   2.349ms      2.7  giá tạo 1 WAL segment mới
+
+=== 2. Group commit: chia nhau một lần fsync ===
+phép đo                                    ops/s trung bình       p50       p99     MB/s  ghi chú
+group commit, 1 txn / 1 fsync               1114   897.3µs   858.8µs   1.507ms      4.6  txn/s hiệu dụng; p99 = độ trễ txn
+group commit, 4 txn / 1 fsync               3739   1.069ms   1.016ms   1.789ms     15.3  txn/s hiệu dụng; p99 = độ trễ txn
+group commit, 16 txn / 1 fsync              9370   1.707ms   1.618ms   2.318ms     38.4  txn/s hiệu dụng; p99 = độ trễ txn
+group commit, 64 txn / 1 fsync             14005   4.564ms   4.716ms   5.667ms     57.4  txn/s hiệu dụng; p99 = độ trễ txn
+group commit, 256 txn / 1 fsync            18441   13.88ms  13.992ms  17.358ms     75.5  txn/s hiệu dụng; p99 = độ trễ txn
+
+=== 3+4. Random vs tuần tự, cache lạnh vs nóng ===
+phép đo                                    ops/s trung bình       p50       p99     MB/s  ghi chú
+pwrite 4KB tuần tự                         24329      41µs    34.6µs    92.7µs     99.7  
+  -> fsync sau ghi tuần tự                    11   89.44ms  91.189ms  91.189ms    183.2  writeback page liền kề
+pwrite 4KB ngẫu nhiên                      21991    45.4µs    43.5µs    99.4µs     90.1  cùng số byte, vị trí rải rác
+  -> fsync sau ghi ngẫu nhiên                  5  206.85ms 205.087ms 205.087ms     79.2  <- GIÁ THẬT CỦA RANDOM WRITE
+pread 4KB tuần tự, CACHE LẠNH              20600    48.4µs    36.6µs   116.5µs     84.4  kernel readahead giúp sức
+pread 4KB ngẫu nhiên, CACHE LẠNH           14645    68.1µs    63.5µs   125.7µs     60.0  <- CHI PHÍ 1 LẦN CHẠM NODE B+TREE
+pread 4KB ngẫu nhiên, CACHE NÓNG           14717    67.8µs    63.5µs   125.4µs     60.3  (O_DIRECT: không có cache nên KHÔNG nóng)
+
+[json] đã ghi bench/baseline/thai-computer-20261001/direct.json
+
+Đọc kết quả:
+  - (write không fsync) / (write + fsync) = cái giá bạn trả cho chữ D trong ACID.
+  - Group commit: ops/s tăng gần tuyến tính theo cỡ nhóm cho tới khi chạm băng thông đĩa.
+    Xem cột p99: nếu p99 không phình theo cỡ nhóm thì gộp commit gần như miễn phí.
+  - (pread ngẫu nhiên cache lạnh) = chi phí MỘT lần chạm node B+Tree.
+    Nhân với chiều cao cây = độ trễ một lookup. Fanout lớn -> cây thấp -> ít lần nhân.
+  - (cache nóng)/(cache lạnh) là lý do buffer pool tồn tại -> phase 3.
+  - p99/p50 lớn = đĩa hoặc filesystem nhiễu; số trung bình lúc đó không đáng tin.

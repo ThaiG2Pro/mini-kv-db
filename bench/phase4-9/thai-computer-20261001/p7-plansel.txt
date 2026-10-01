@@ -1,0 +1,33 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/query
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkPlanSelectivity/sel=000.1%/seq-16         	      20	  18394948 ns/op	        20.00 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=000.1%/index-16       	      20	     59924 ns/op	        20.00 rows	        40.00 touched
+BenchmarkPlanSelectivity/sel=000.1%/indexonly-16   	      20	     13861 ns/op	        20.00 rows	        20.00 touched
+BenchmarkPlanSelectivity/sel=000.5%/seq-16         	      20	  18468275 ns/op	       100.0 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=000.5%/index-16       	      20	    179331 ns/op	       100.0 rows	       200.0 touched
+BenchmarkPlanSelectivity/sel=000.5%/indexonly-16   	      20	     65927 ns/op	       100.0 rows	       100.0 touched
+BenchmarkPlanSelectivity/sel=001.0%/seq-16         	      20	  17629457 ns/op	       200.0 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=001.0%/index-16       	      20	    419144 ns/op	       200.0 rows	       400.0 touched
+BenchmarkPlanSelectivity/sel=001.0%/indexonly-16   	      20	    166939 ns/op	       200.0 rows	       200.0 touched
+BenchmarkPlanSelectivity/sel=002.5%/seq-16         	      20	  16115922 ns/op	       500.0 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=002.5%/index-16       	      20	    998554 ns/op	       500.0 rows	      1000 touched
+BenchmarkPlanSelectivity/sel=002.5%/indexonly-16   	      20	    248992 ns/op	       500.0 rows	       500.0 touched
+BenchmarkPlanSelectivity/sel=005.0%/seq-16         	      20	  13998119 ns/op	      1000 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=005.0%/index-16       	      20	   2049561 ns/op	      1000 rows	      2000 touched
+BenchmarkPlanSelectivity/sel=005.0%/indexonly-16   	      20	    479354 ns/op	      1000 rows	      1000 touched
+BenchmarkPlanSelectivity/sel=010.0%/seq-16         	      20	  12330579 ns/op	      2000 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=010.0%/index-16       	      20	   3546497 ns/op	      2000 rows	      4000 touched
+BenchmarkPlanSelectivity/sel=010.0%/indexonly-16   	      20	    842904 ns/op	      2000 rows	      2000 touched
+BenchmarkPlanSelectivity/sel=025.0%/seq-16         	      20	  11290689 ns/op	      5000 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=025.0%/index-16       	      20	   7264998 ns/op	      5000 rows	     10000 touched
+BenchmarkPlanSelectivity/sel=025.0%/indexonly-16   	      20	   1925601 ns/op	      5000 rows	      5000 touched
+BenchmarkPlanSelectivity/sel=050.0%/seq-16         	      20	   9637203 ns/op	     10000 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=050.0%/index-16       	      20	  12521579 ns/op	     10000 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=050.0%/indexonly-16   	      20	   2851455 ns/op	     10000 rows	     10000 touched
+BenchmarkPlanSelectivity/sel=100.0%/seq-16         	      20	   8779586 ns/op	     20000 rows	     20000 touched
+BenchmarkPlanSelectivity/sel=100.0%/index-16       	      20	  21422591 ns/op	     20000 rows	     40000 touched
+BenchmarkPlanSelectivity/sel=100.0%/indexonly-16   	      20	   5246945 ns/op	     20000 rows	     20000 touched
+PASS
+ok  	minidb/internal/query	4.895s

@@ -1,0 +1,19 @@
+dữ liệu: ev 20000 hàng, dim 200 hàng, index ev_kind(kind), buffer pool 1024 frame
+
+=== 2. hash join: hạn mức bộ nhớ và cái giá của việc tràn ra đĩa
+    vế build là dim (200 hàng); hạn mức tính bằng HÀNG
+
+   hạn mức  thời gian vs tốt nhất     file tạm     byte ghi hàng đọc lại    tràn?
+         1    24.705ms       2.52x           64      1475090        20200       CÓ
+         4    24.087ms       2.46x           64      1475090        20200       CÓ
+        16    24.147ms       2.46x           64      1475090        20200       CÓ
+        64    24.089ms       2.46x           64      1475090        20200       CÓ
+       100    23.836ms       2.43x           64      1475090        20200       CÓ
+       200     9.807ms       1.00x            0            0            0    không
+       400     9.815ms       1.00x            0            0            0    không
+      4096    10.180ms       1.04x            0            0            0    không
+
+    Đọc: hạn mức là tham số ĐỔI THUẬT TOÁN, không phải tham số tinh chỉnh.
+    Dưới ngưỡng thì hash join chia phần, ghi ra đĩa, đọc lại — mỗi vế đi qua
+    ba lần thay vì một. Trên ngưỡng thì thêm bộ nhớ KHÔNG mua được gì nữa.
+

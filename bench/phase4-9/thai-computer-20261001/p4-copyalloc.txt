@@ -1,0 +1,16 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/btree
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkCopyVsAlloc/alloc+copy-16         	 7793790	       153.6 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkCopyVsAlloc/alloc+copy-16         	 6281894	       190.5 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkCopyVsAlloc/alloc+copy-16         	 6013372	       190.9 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkCopyVsAlloc/alloc+copy-16         	 6339205	       192.6 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkCopyVsAlloc/alloc+copy-16         	 6053742	       192.6 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkCopyVsAlloc/copy-16               	52114610	        27.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCopyVsAlloc/copy-16               	40072604	        25.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCopyVsAlloc/copy-16               	40758126	        25.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCopyVsAlloc/copy-16               	42773132	        27.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCopyVsAlloc/copy-16               	43704181	        24.24 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	minidb/internal/btree	12.745s

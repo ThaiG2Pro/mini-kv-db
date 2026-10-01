@@ -1,0 +1,23 @@
+dữ liệu: ev 20000 hàng, dim 200 hàng, index ev_kind(kind), buffer pool 1024 frame
+
+=== 1. nested loop vs hash join, theo kích thước vế ngoài
+    câu: SELECT ev.city, dim.name FROM ev JOIN dim ON ev.kind=dim.kind WHERE ev.id < W
+
+       W   hàng ra   nested(ms)     hash(ms)   nl/hash  vòng ngoài      đọc(nl) planner chọn
+       1         1        0.058        0.090     0.65x           1          201   NestedLoop
+       2         2        0.113        0.106     1.07x           2          402   NestedLoop
+       5         5        0.740        0.077     9.56x         200         1200     HashJoin
+      20        20        2.292        0.080    28.79x         200         4200     HashJoin
+     100       100        7.852        0.121    64.82x         200        20200     HashJoin
+     500       500       30.592        0.299   102.30x         500       100500     HashJoin
+    2000      2000      123.879        0.962   128.72x        2000       402000     HashJoin
+   10000     10000      quá đắt        5.240         —           -            -     HashJoin
+   20000     20000      quá đắt        9.737         —           -            -     HashJoin
+
+    Đọc: nested loop chỉ thắng khi vế ngoài rất ít hàng, vì chi phí của nó là
+    |L|·|R| còn hash join là |L|+|R|. Cột inner-scan là số lần vế TRONG bị chạy
+    lại. Chú ý nó KHÔNG luôn bằng W: planner chọn vế ít hàng làm build, nên với
+    W nhỏ thì dim (200 hàng) thành vòng ngoài. Ba dòng giữa bảng có vòng ngoài
+    ĐỨNG YÊN ở 200 mà thời gian tăng 13x — cột đọc(nl) giải thích: vòng TRONG
+    lớn dần theo W, và nested loop trả giá bằng phép nhân.
+

@@ -1,0 +1,11 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/btree
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkInsertSequential-16             	 1000000	       969.4 ns/op	        98.87 %fill	         4.000 height	        30.69 pages/1k	        30.68 splits/1k	         0.03069 writes/op	     516 B/op	       1 allocs/op
+BenchmarkInsertSequentialNoOpt-16        	 1000000	       679.6 ns/op	        51.22 %fill	         4.000 height	        59.57 pages/1k	        59.56 splits/1k	         0.05957 writes/op	     641 B/op	       1 allocs/op
+BenchmarkInsertRandom-16                 	 1000000	      1920 ns/op	        69.48 %fill	         4.000 height	        43.71 pages/1k	        43.71 splits/1k	         1.012 writes/op	     572 B/op	       1 allocs/op
+BenchmarkInsertSequentialSmallPool-16    	 1000000	       501.0 ns/op	        98.87 %fill	         4.000 height	        30.69 pages/1k	        30.68 splits/1k	         0.03069 writes/op	     516 B/op	       1 allocs/op
+BenchmarkInsertRandomSmallPool-16        	 1000000	      1459 ns/op	        69.48 %fill	         4.000 height	        43.71 pages/1k	        43.71 splits/1k	         1.076 writes/op	     572 B/op	       1 allocs/op
+PASS
+ok  	minidb/internal/btree	7.181s

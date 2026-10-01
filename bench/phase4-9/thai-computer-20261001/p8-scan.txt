@@ -1,0 +1,9 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/txn
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkScan-16    	     300	    654834 ns/op	      2000 keys/scan
+BenchmarkScan-16    	     300	    655522 ns/op	      2000 keys/scan
+BenchmarkScan-16    	     300	    636386 ns/op	      2000 keys/scan
+PASS
+ok  	minidb/internal/txn	10.713s

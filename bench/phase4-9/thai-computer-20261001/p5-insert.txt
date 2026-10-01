@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/db
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkInsertBatch1-16       	    2000	    685331 ns/op	         1.000 fsync/op	         0 fullpg/op	       587.0 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1-16       	    2000	    837925 ns/op	         1.000 fsync/op	         0 fullpg/op	       587.0 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1-16       	    2000	    860014 ns/op	         1.000 fsync/op	         0 fullpg/op	       587.0 logB/op	         0 pagewr/op
+BenchmarkInsertBatch10-16      	    2000	     95653 ns/op	         0.1000 fsync/op	         0 fullpg/op	       500.6 logB/op	         0 pagewr/op
+BenchmarkInsertBatch10-16      	    2000	     96519 ns/op	         0.1000 fsync/op	         0 fullpg/op	       500.6 logB/op	         0 pagewr/op
+BenchmarkInsertBatch10-16      	    2000	     96590 ns/op	         0.1000 fsync/op	         0 fullpg/op	       500.6 logB/op	         0 pagewr/op
+BenchmarkInsertBatch100-16     	    2000	     16630 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+BenchmarkInsertBatch100-16     	    2000	     13951 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+BenchmarkInsertBatch100-16     	    2000	     15103 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1000-16    	    2000	      6772 ns/op	         0.001000 fsync/op	         0 fullpg/op	       491.0 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1000-16    	    2000	      6563 ns/op	         0.001000 fsync/op	         0 fullpg/op	       491.0 logB/op	         0 pagewr/op
+BenchmarkInsertBatch1000-16    	    2000	      5544 ns/op	         0.001000 fsync/op	         0 fullpg/op	       491.0 logB/op	         0 pagewr/op
+BenchmarkInsertNoSync-16       	    2000	     13714 ns/op	         0 fsync/op	         0 fullpg/op	       587.0 logB/op	         0 pagewr/op
+BenchmarkInsertNoSync-16       	    2000	     14157 ns/op	         0 fsync/op	         0 fullpg/op	       587.0 logB/op	         0 pagewr/op
+BenchmarkInsertNoSync-16       	    2000	     14928 ns/op	         0 fsync/op	         0 fullpg/op	       587.0 logB/op	         0 pagewr/op
+BenchmarkInsertNoFPW-16        	    2000	     12729 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+BenchmarkInsertNoFPW-16        	    2000	     15778 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+BenchmarkInsertNoFPW-16        	    2000	     14483 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+BenchmarkInsertFPW-16          	    2000	     14997 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+BenchmarkInsertFPW-16          	    2000	     14690 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+BenchmarkInsertFPW-16          	    2000	     13932 ns/op	         0.01000 fsync/op	         0 fullpg/op	       491.9 logB/op	         0 pagewr/op
+PASS
+ok  	minidb/internal/db	6.136s

@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/btree
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkGetPool32-16      	  200000	      1056 ns/op	        39.87 %hit	         1.804 reads/op
+BenchmarkGetPool32-16      	  200000	      1076 ns/op	        39.87 %hit	         1.804 reads/op
+BenchmarkGetPool32-16      	  200000	      1058 ns/op	        39.87 %hit	         1.804 reads/op
+BenchmarkGetPool128-16     	  200000	      1124 ns/op	        55.43 %hit	         1.337 reads/op
+BenchmarkGetPool128-16     	  200000	      1295 ns/op	        55.43 %hit	         1.337 reads/op
+BenchmarkGetPool128-16     	  200000	      1324 ns/op	        55.43 %hit	         1.337 reads/op
+BenchmarkGetPool512-16     	  200000	      1508 ns/op	        68.95 %hit	         0.9316 reads/op
+BenchmarkGetPool512-16     	  200000	      1557 ns/op	        68.95 %hit	         0.9316 reads/op
+BenchmarkGetPool512-16     	  200000	      1513 ns/op	        68.95 %hit	         0.9316 reads/op
+BenchmarkGetPool2048-16    	  200000	      2299 ns/op	        77.49 %hit	         0.6753 reads/op
+BenchmarkGetPool2048-16    	  200000	      2337 ns/op	        77.49 %hit	         0.6753 reads/op
+BenchmarkGetPool2048-16    	  200000	      2313 ns/op	        77.49 %hit	         0.6753 reads/op
+BenchmarkGetPool4096-16    	  200000	      2559 ns/op	        88.75 %hit	         0.3375 reads/op
+BenchmarkGetPool4096-16    	  200000	      2527 ns/op	        88.75 %hit	         0.3375 reads/op
+BenchmarkGetPool4096-16    	  200000	      2586 ns/op	        88.75 %hit	         0.3375 reads/op
+BenchmarkGetPool8192-16    	  200000	       911.2 ns/op	       100.0 %hit	         0 reads/op
+BenchmarkGetPool8192-16    	  200000	      1169 ns/op	       100.0 %hit	         0 reads/op
+BenchmarkGetPool8192-16    	  200000	      1535 ns/op	       100.0 %hit	         0 reads/op
+PASS
+ok  	minidb/internal/btree	10.170s

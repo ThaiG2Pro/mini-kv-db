@@ -1,0 +1,10 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/query
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkIndexMaintenance/indexes=0-16         	    6000	      9524 ns/op
+BenchmarkIndexMaintenance/indexes=1-16         	    6000	     16945 ns/op
+BenchmarkIndexMaintenance/indexes=2-16         	    6000	     22722 ns/op
+BenchmarkIndexMaintenance/indexes=3-16         	    6000	     29633 ns/op
+PASS
+ok  	minidb/internal/query	0.564s

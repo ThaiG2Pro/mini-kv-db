@@ -1,0 +1,36 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/pager
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkCommit-16           	     200	   1233175 ns/op
+BenchmarkCommit-16           	     200	   1859761 ns/op
+BenchmarkCommit-16           	     200	   1926821 ns/op
+BenchmarkCommit-16           	     200	   1846593 ns/op
+BenchmarkCommit-16           	     200	   1894395 ns/op
+BenchmarkReadPage-16         	     200	      1049 ns/op
+BenchmarkReadPage-16         	     200	      1048 ns/op
+BenchmarkReadPage-16         	     200	      1388 ns/op
+BenchmarkReadPage-16         	     200	      1872 ns/op
+BenchmarkReadPage-16         	     200	      1058 ns/op
+BenchmarkCommitNoSync-16     	     200	     10260 ns/op
+BenchmarkCommitNoSync-16     	     200	     13838 ns/op
+BenchmarkCommitNoSync-16     	     200	      9744 ns/op
+BenchmarkCommitNoSync-16     	     200	      9830 ns/op
+BenchmarkCommitNoSync-16     	     200	      8298 ns/op
+BenchmarkCommitBatch64-16    	     200	   2287141 ns/op	     35736 ns/page
+BenchmarkCommitBatch64-16    	     200	   2396824 ns/op	     37450 ns/page
+BenchmarkCommitBatch64-16    	     200	   2603587 ns/op	     40680 ns/page
+BenchmarkCommitBatch64-16    	     200	   2584994 ns/op	     40390 ns/page
+BenchmarkCommitBatch64-16    	     200	   2718396 ns/op	     42474 ns/page
+BenchmarkAllocLIFO-16        	     200	    647320 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLIFO-16        	     200	    647542 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLIFO-16        	     200	    648040 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLIFO-16        	     200	    639654 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLIFO-16        	     200	    662606 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLowest-16      	     200	   1175923 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLowest-16      	     200	   1196163 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLowest-16      	     200	   1182968 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLowest-16      	     200	   1189901 ns/op	         2.371 page-gap	         0 page-phình
+BenchmarkAllocLowest-16      	     200	   1175353 ns/op	         2.371 page-gap	         0 page-phình
+PASS
+ok  	minidb/internal/pager	7.527s

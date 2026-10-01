@@ -1,0 +1,4 @@
+trước: trung vị 404 ns/hàng, min 402, allocs 140021
+sau:   trung vị 357 ns/hàng, min 348, allocs 40021
+tỉ số sau/trước theo cặp: trung vị 0.870, khoảng [0.846, 0.898]
+khoảng tứ phân vị nằm trọn dưới 1.0 thì bản sửa nhanh hơn thật; vắt qua 1.0 thì chưa kết luận được

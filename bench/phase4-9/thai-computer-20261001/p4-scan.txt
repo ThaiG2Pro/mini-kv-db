@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/btree
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkScan-16            	      20	  28605429 ns/op	       143.0 ns/key
+BenchmarkScan-16            	      20	  20095919 ns/op	       100.5 ns/key
+BenchmarkScan-16            	      20	  16941443 ns/op	        84.71 ns/key
+BenchmarkSearchInPage-16    	      20	       122.2 ns/op
+--- BENCH: BenchmarkSearchInPage-16
+    bench_test.go:171: page chứa 135 khóa 16 byte
+    bench_test.go:171: page chứa 135 khóa 16 byte
+BenchmarkSearchInPage-16    	      20	       118.8 ns/op
+--- BENCH: BenchmarkSearchInPage-16
+    bench_test.go:171: page chứa 135 khóa 16 byte
+    bench_test.go:171: page chứa 135 khóa 16 byte
+BenchmarkSearchInPage-16    	      20	       130.2 ns/op
+--- BENCH: BenchmarkSearchInPage-16
+    bench_test.go:171: page chứa 135 khóa 16 byte
+    bench_test.go:171: page chứa 135 khóa 16 byte
+PASS
+ok  	minidb/internal/btree	2.301s

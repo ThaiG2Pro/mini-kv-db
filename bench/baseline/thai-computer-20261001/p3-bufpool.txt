@@ -1,0 +1,176 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/bufpool
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkPinHit/lru         	10761482	        97.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru         	26767954	        42.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru         	25532329	        42.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru         	24740187	        42.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru         	25790106	        43.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-6       	27116844	        42.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-6       	25921162	        42.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-6       	26067342	        42.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-6       	26056689	        42.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-6       	26285496	        42.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock       	30796832	        36.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock       	30865274	        36.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock       	32521716	        36.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock       	29636938	        36.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock       	31085371	        36.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock-6     	29502618	        36.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock-6     	28825287	        36.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock-6     	29941893	        36.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock-6     	29255366	        36.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/clock-6     	29046078	        36.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2       	30646356	        35.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2       	33334326	        35.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2       	29347940	        35.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2       	30662943	        34.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2       	31645138	        34.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2-6     	30350997	        34.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2-6     	31135704	        34.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2-6     	31932955	        35.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2-6     	28758075	        34.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHit/lru-2-6     	34900248	        35.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru        	 2190459	       514.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru        	 3834460	       316.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru        	 3859719	       317.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru        	 3785348	       316.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru        	 3921099	       311.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-6      	 3995940	       305.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-6      	 4029650	       297.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-6      	 4015197	       302.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-6      	 4061450	       300.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-6      	 4070440	       298.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock      	 4113370	       294.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock      	 4082280	       292.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock      	 3911539	       311.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock      	 4052251	       294.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock      	 4081064	       297.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock-6    	 3988544	       296.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock-6    	 4120420	       313.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock-6    	 4137270	       294.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock-6    	 4099020	       296.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/clock-6    	 4102504	       297.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2      	 4160972	       282.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2      	 4262744	       294.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2      	 4091240	       287.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2      	 4294512	       283.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2      	 4269535	       282.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2-6    	 4230190	       284.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2-6    	 4213771	       289.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2-6    	 4173718	       284.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2-6    	 4227638	       283.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinMiss/lru-2-6    	 4203885	       283.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReplayZipf/lru     	      74	  15970500 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511448 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru     	      67	  16483412 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511448 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru     	      73	  16136012 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511448 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru     	      74	  16294641 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511448 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru     	      74	  16063534 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511448 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru-6   	      74	  16564709 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511478 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru-6   	      70	  16618821 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511475 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru-6   	      72	  16857685 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511458 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru-6   	      70	  16390702 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511473 B/op	    2013 allocs/op
+BenchmarkReplayZipf/lru-6   	      72	  16777723 ns/op	         0.4975 hit-ratio	    100000 ops/iter	 8511472 B/op	    2013 allocs/op
+BenchmarkReplayZipf/clock   	      73	  16035350 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8510984 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock   	      74	  16060386 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8510984 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock   	      70	  16039273 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8510984 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock   	      66	  16171564 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8510984 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock   	      74	  16043452 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8510984 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock-6 	      62	  16543182 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8511005 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock-6 	      72	  16340836 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8511018 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock-6 	      72	  16681928 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8510999 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock-6 	      61	  16594824 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8511006 B/op	    2012 allocs/op
+BenchmarkReplayZipf/clock-6 	      73	  16599063 ns/op	         0.4825 hit-ratio	    100000 ops/iter	 8511005 B/op	    2012 allocs/op
+BenchmarkReplayZipf/lru-2   	      72	  16353269 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513736 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2   	      64	  16667684 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513736 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2   	      70	  16431623 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513736 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2   	      70	  16344755 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513736 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2   	      62	  16532394 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513736 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2-6 	      62	  16691668 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513765 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2-6 	      63	  16563727 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513771 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2-6 	      73	  16629803 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513772 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2-6 	      68	  16581854 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513750 B/op	    2076 allocs/op
+BenchmarkReplayZipf/lru-2-6 	      60	  16734981 ns/op	         0.6132 hit-ratio	    100000 ops/iter	 8513752 B/op	    2076 allocs/op
+BenchmarkVictim/lru/64      	130699303	         9.119 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64      	131214324	         9.186 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64      	130996950	         9.177 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64      	130995637	         9.188 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64      	131416790	         9.145 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64-6    	130776812	         9.115 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64-6    	131327486	         9.165 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64-6    	130810476	         9.152 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64-6    	130765804	         9.174 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/64-6    	131531650	         9.168 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64    	160228124	         7.482 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64    	160130636	         7.468 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64    	160649982	         7.478 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64    	159966027	         7.470 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64    	159681195	         7.494 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64-6  	159280357	         7.473 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64-6  	159429324	         7.473 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64-6  	159206796	         7.500 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64-6  	160537801	         7.505 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/64-6  	159060516	         7.465 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64    	10541757	        95.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64    	12451936	       100.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64    	10991496	        93.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64    	12406275	        98.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64    	11722622	        95.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64-6  	12597526	        98.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64-6  	11752048	        93.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64-6  	11552958	        98.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64-6  	11168763	        92.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/64-6  	12585732	       101.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024    	135062310	         8.889 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024    	135468127	         8.850 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024    	135163957	         8.906 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024    	134374806	         8.883 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024    	134030606	         8.895 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024-6  	135461456	         8.873 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024-6  	135268110	         8.872 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024-6  	134455882	         8.879 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024-6  	135362536	         8.899 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru/1024-6  	135253690	         8.910 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024           	149072391	         8.001 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024           	149952753	         8.009 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024           	148666158	         7.987 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024           	150334174	         8.055 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024           	149512600	         8.024 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024-6         	150231528	         8.016 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024-6         	150414478	         8.015 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024-6         	150133050	         8.016 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024-6         	150493995	         8.015 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/clock/1024-6         	148398378	         8.035 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024           	  691680	      1679 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024           	  684999	      1681 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024           	  640791	      1683 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024           	  664591	      1683 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024           	  711507	      1684 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024-6         	  770016	      1686 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024-6         	  869925	      1685 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024-6         	  751471	      1682 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024-6         	  716474	      1688 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVictim/lru-2/1024-6         	  863193	      1682 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru          	23265687	        44.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru          	25714296	        44.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru          	25680135	        44.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru          	25224739	        44.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru          	24063176	        44.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru-6        	14619385	        82.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru-6        	14528617	       131.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru-6        	 8349952	       146.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru-6        	 8505710	       142.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/lru-6        	 8249106	       142.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock        	13132873	        87.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock        	13327887	        87.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock        	12879840	        87.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock        	13163142	        83.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock        	31685005	        32.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock-6      	14881532	        82.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock-6      	12442810	       136.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock-6      	 8330439	       138.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock-6      	 8583006	       143.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPinHitParallel/clock-6      	 8263909	       141.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	minidb/internal/bufpool	275.094s

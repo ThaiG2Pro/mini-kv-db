@@ -1,0 +1,171 @@
+{
+  "host": "thai-computer",
+  "kernel": "7.1.3-2-cachyos",
+  "go": "go1.26.2",
+  "date": "2026-10-01T23:00:14+07:00",
+  "file_mb": 512,
+  "repeat": 3,
+  "o_direct": true,
+  "results": [
+    {
+      "section": "1. write() KHÔNG phải durability",
+      "name": "write 4KB (không fsync)",
+      "n": 6000,
+      "ops_per_sec": 20283.99485976525,
+      "mean_ns": 49216,
+      "p50_ns": 34035,
+      "p99_ns": 173901,
+      "mb_per_sec": 83.08324294559847
+    },
+    {
+      "section": "1. write() KHÔNG phải durability",
+      "name": "write 4KB + fsync mỗi lần",
+      "n": 900,
+      "ops_per_sec": 1193.1055947779666,
+      "mean_ns": 837978,
+      "p50_ns": 804023,
+      "p99_ns": 1496349,
+      "mb_per_sec": 4.886960516210551
+    },
+    {
+      "section": "1. write() KHÔNG phải durability",
+      "name": "fsync khi không có gì bẩn",
+      "n": 900,
+      "ops_per_sec": 630911.2882647697,
+      "mean_ns": 1492,
+      "p50_ns": 1172,
+      "p99_ns": 2125,
+      "mb_per_sec": 2584.2126367324963
+    },
+    {
+      "section": "1. write() KHÔNG phải durability",
+      "name": "tạo file + fsync file + fsync dir",
+      "n": 300,
+      "ops_per_sec": 649.6524832378236,
+      "mean_ns": 1539002,
+      "p50_ns": 1430946,
+      "p99_ns": 2349098,
+      "mb_per_sec": 2.6609765713421254
+    },
+    {
+      "section": "2. Group commit: chia nhau một lần fsync",
+      "name": "group commit, 1 txn / 1 fsync",
+      "n": 600,
+      "ops_per_sec": 1114.0823398278158,
+      "mean_ns": 897275,
+      "p50_ns": 858817,
+      "p99_ns": 1506699,
+      "mb_per_sec": 4.563281263934733
+    },
+    {
+      "section": "2. Group commit: chia nhau một lần fsync",
+      "name": "group commit, 4 txn / 1 fsync",
+      "n": 600,
+      "ops_per_sec": 3739.344574039948,
+      "mean_ns": 1069334,
+      "p50_ns": 1016294,
+      "p99_ns": 1788767,
+      "mb_per_sec": 15.316355375267626
+    },
+    {
+      "section": "2. Group commit: chia nhau một lần fsync",
+      "name": "group commit, 16 txn / 1 fsync",
+      "n": 576,
+      "ops_per_sec": 9370.424902242554,
+      "mean_ns": 1706805,
+      "p50_ns": 1618294,
+      "p99_ns": 2317785,
+      "mb_per_sec": 38.38126039958551
+    },
+    {
+      "section": "2. Group commit: chia nhau một lần fsync",
+      "name": "group commit, 64 txn / 1 fsync",
+      "n": 576,
+      "ops_per_sec": 14005.158518091808,
+      "mean_ns": 4564312,
+      "p50_ns": 4716451,
+      "p99_ns": 5666917,
+      "mb_per_sec": 57.36512929010404
+    },
+    {
+      "section": "2. Group commit: chia nhau một lần fsync",
+      "name": "group commit, 256 txn / 1 fsync",
+      "n": 2304,
+      "ops_per_sec": 18440.603205256968,
+      "mean_ns": 13880094,
+      "p50_ns": 13992192,
+      "p99_ns": 17357748,
+      "mb_per_sec": 75.53271072873254
+    },
+    {
+      "section": "3+4. Random vs tuần tự, cache lạnh vs nóng",
+      "name": "pwrite 4KB tuần tự",
+      "n": 12000,
+      "ops_per_sec": 24328.670411157207,
+      "mean_ns": 41022,
+      "p50_ns": 34636,
+      "p99_ns": 92746,
+      "mb_per_sec": 99.65023400409991
+    },
+    {
+      "section": "3+4. Random vs tuần tự, cache lạnh vs nóng",
+      "name": "  -\u003e fsync sau ghi tuần tự",
+      "n": 3,
+      "ops_per_sec": 11.18070249509116,
+      "mean_ns": 89439577,
+      "p50_ns": 91189342,
+      "p99_ns": 91189342,
+      "mb_per_sec": 183.18462967957356
+    },
+    {
+      "section": "3+4. Random vs tuần tự, cache lạnh vs nóng",
+      "name": "pwrite 4KB ngẫu nhiên",
+      "n": 12000,
+      "ops_per_sec": 21990.85323812354,
+      "mean_ns": 45388,
+      "p50_ns": 43513,
+      "p99_ns": 99389,
+      "mb_per_sec": 90.07453486335403
+    },
+    {
+      "section": "3+4. Random vs tuần tự, cache lạnh vs nóng",
+      "name": "  -\u003e fsync sau ghi ngẫu nhiên",
+      "n": 3,
+      "ops_per_sec": 4.834424801958029,
+      "mean_ns": 206849737,
+      "p50_ns": 205087175,
+      "p99_ns": 205087175,
+      "mb_per_sec": 79.20721595528036
+    },
+    {
+      "section": "3+4. Random vs tuần tự, cache lạnh vs nóng",
+      "name": "pread 4KB tuần tự, CACHE LẠNH",
+      "n": 12000,
+      "ops_per_sec": 20600.394267855834,
+      "mean_ns": 48388,
+      "p50_ns": 36580,
+      "p99_ns": 116520,
+      "mb_per_sec": 84.37921492113749
+    },
+    {
+      "section": "3+4. Random vs tuần tự, cache lạnh vs nóng",
+      "name": "pread 4KB ngẫu nhiên, CACHE LẠNH",
+      "n": 12000,
+      "ops_per_sec": 14645.2961090132,
+      "mean_ns": 68128,
+      "p50_ns": 63450,
+      "p99_ns": 125730,
+      "mb_per_sec": 59.98713286251807
+    },
+    {
+      "section": "3+4. Random vs tuần tự, cache lạnh vs nóng",
+      "name": "pread 4KB ngẫu nhiên, CACHE NÓNG",
+      "n": 12000,
+      "ops_per_sec": 14716.862809886863,
+      "mean_ns": 67791,
+      "p50_ns": 63461,
+      "p99_ns": 125396,
+      "mb_per_sec": 60.28027006929659
+    }
+  ]
+}

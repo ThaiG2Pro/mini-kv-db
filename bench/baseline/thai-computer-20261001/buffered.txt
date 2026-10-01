@@ -1,0 +1,49 @@
+iolab — Phase 0
+máy: thai-computer | kernel: 7.1.3-2-cachyos | go1.26.2
+thư mục: /home/thai/my-project/mini-kv-db/data/iolab | page 4096B | file 512MB | repeat 5 | O_DIRECT false
+  [cache] residency 100.0% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 3.7% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 100.0% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 3.8% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 100.0% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 3.8% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 100.0% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 3.2% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 100.0% -> 0.0%  (OK — cache đã bị đẩy ra)
+  [cache] residency 3.2% -> 0.0%  (OK — cache đã bị đẩy ra)
+
+=== 1. write() KHÔNG phải durability ===
+phép đo                                    ops/s trung bình       p50       p99     MB/s  ghi chú
+write 4KB (không fsync)                   128244     7.7µs     6.4µs    14.9µs    525.3  chỉ tới page cache — CHƯA durable
+write 4KB + fsync mỗi lần                   1166   857.4µs   788.4µs   2.624ms      4.8  = trần commit/s của 1 luồng
+fsync khi không có gì bẩn                 729954     1.3µs     1.2µs     2.2µs   2989.9  overhead nền của syscall
+tạo file + fsync file + fsync dir            624   1.602ms   1.463ms   3.391ms      2.6  giá tạo 1 WAL segment mới
+
+=== 2. Group commit: chia nhau một lần fsync ===
+phép đo                                    ops/s trung bình       p50       p99     MB/s  ghi chú
+group commit, 1 txn / 1 fsync               1168   856.1µs   795.8µs   1.756ms      4.8  txn/s hiệu dụng; p99 = độ trễ txn
+group commit, 4 txn / 1 fsync               4139   966.1µs   902.4µs    2.53ms     17.0  txn/s hiệu dụng; p99 = độ trễ txn
+group commit, 16 txn / 1 fsync             15529   1.029ms     972µs   1.598ms     63.6  txn/s hiệu dụng; p99 = độ trễ txn
+group commit, 64 txn / 1 fsync             47877   1.336ms   1.316ms   1.568ms    196.1  txn/s hiệu dụng; p99 = độ trễ txn
+group commit, 256 txn / 1 fsync            89824   2.848ms   2.597ms   5.934ms    367.9  txn/s hiệu dụng; p99 = độ trễ txn
+
+=== 3+4. Random vs tuần tự, cache lạnh vs nóng ===
+phép đo                                    ops/s trung bình       p50       p99     MB/s  ghi chú
+pwrite 4KB tuần tự                        155657     6.3µs     6.1µs    12.7µs    637.6  
+  -> fsync sau ghi tuần tự                   106   9.473ms   8.941ms   9.061ms   1729.6  writeback page liền kề
+pwrite 4KB ngẫu nhiên                      79660    12.4µs     7.1µs    20.4µs    326.3  cùng số byte, vị trí rải rác
+  -> fsync sau ghi ngẫu nhiên                  5 193.293ms 129.724ms 139.659ms     84.8  <- GIÁ THẬT CỦA RANDOM WRITE
+pread 4KB tuần tự, CACHE LẠNH              69197    14.4µs     1.5µs     5.8µs    283.4  kernel readahead giúp sức
+pread 4KB ngẫu nhiên, CACHE LẠNH            9651   103.5µs   102.8µs   263.8µs     39.5  <- CHI PHÍ 1 LẦN CHẠM NODE B+TREE
+pread 4KB ngẫu nhiên, CACHE NÓNG          382403     2.5µs     2.4µs     7.7µs   1566.3  <- cùng offset, giá trị của buffer pool
+
+[json] đã ghi bench/baseline/thai-computer-20261001/buffered.json
+
+Đọc kết quả:
+  - (write không fsync) / (write + fsync) = cái giá bạn trả cho chữ D trong ACID.
+  - Group commit: ops/s tăng gần tuyến tính theo cỡ nhóm cho tới khi chạm băng thông đĩa.
+    Xem cột p99: nếu p99 không phình theo cỡ nhóm thì gộp commit gần như miễn phí.
+  - (pread ngẫu nhiên cache lạnh) = chi phí MỘT lần chạm node B+Tree.
+    Nhân với chiều cao cây = độ trễ một lookup. Fanout lớn -> cây thấp -> ít lần nhân.
+  - (cache nóng)/(cache lạnh) là lý do buffer pool tồn tại -> phase 3.
+  - p99/p50 lớn = đĩa hoặc filesystem nhiễu; số trung bình lúc đó không đáng tin.

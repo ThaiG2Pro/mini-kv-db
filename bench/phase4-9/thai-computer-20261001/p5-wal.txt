@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/wal
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkDiffGran16-16        	  512064	      2510 ns/op	        80.00 dataB	         3.000 seg	        51.20 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran16-16        	 1222128	       958.2 ns/op	        80.00 dataB	         3.000 seg	        51.20 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran16-16        	 1267394	       942.7 ns/op	        80.00 dataB	         3.000 seg	        51.20 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran32-16        	 2112622	       574.7 ns/op	       128.0 dataB	         3.000 seg	        32.00 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran32-16        	 2059204	       559.1 ns/op	       128.0 dataB	         3.000 seg	        32.00 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran32-16        	 2143282	       563.2 ns/op	       128.0 dataB	         3.000 seg	        32.00 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran64-16        	 3845848	       314.1 ns/op	       192.0 dataB	         3.000 seg	        21.33 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran64-16        	 3774354	       314.2 ns/op	       192.0 dataB	         3.000 seg	        21.33 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran64-16        	 3808602	       314.1 ns/op	       192.0 dataB	         3.000 seg	        21.33 x-vs-fullpage	      16 B/op	       1 allocs/op
+BenchmarkDiffGran128-16       	 6482698	       183.0 ns/op	       384.0 dataB	         2.000 seg	        10.67 x-vs-fullpage	       8 B/op	       1 allocs/op
+BenchmarkDiffGran128-16       	 6476906	       180.3 ns/op	       384.0 dataB	         2.000 seg	        10.67 x-vs-fullpage	       8 B/op	       1 allocs/op
+BenchmarkDiffGran128-16       	 6630496	       180.9 ns/op	       384.0 dataB	         2.000 seg	        10.67 x-vs-fullpage	       8 B/op	       1 allocs/op
+BenchmarkDiffIdentical-16     	 2344089	       511.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDiffIdentical-16     	 2348482	       515.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDiffIdentical-16     	 2351490	       511.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEncodePayload-16     	41338089	        25.62 ns/op	       284.0 payloadB	       0 B/op	       0 allocs/op
+BenchmarkEncodePayload-16     	42886279	        25.36 ns/op	       284.0 payloadB	       0 B/op	       0 allocs/op
+BenchmarkEncodePayload-16     	43873074	        25.50 ns/op	       284.0 payloadB	       0 B/op	       0 allocs/op
+BenchmarkEncodeFullPage-16    	23525422	        50.06 ns/op	      4244 payloadB	       0 B/op	       0 allocs/op
+BenchmarkEncodeFullPage-16    	23727128	        49.82 ns/op	      4244 payloadB	       0 B/op	       0 allocs/op
+BenchmarkEncodeFullPage-16    	23227510	        50.01 ns/op	      4244 payloadB	       0 B/op	       0 allocs/op
+BenchmarkApply-16             	78173954	        13.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkApply-16             	73387057	        14.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkApply-16             	88445572	        13.78 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	minidb/internal/wal	36.937s

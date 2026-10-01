@@ -1,0 +1,10 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/db
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkRecoverNoCkpt-16     	      10	 490649805 ns/op	     11491 logKiB	     21725 redo	         0 skip
+BenchmarkRecoverCkpt1M-16     	      10	 271366708 ns/op	     11593 logKiB	     13033 redo	        63.00 skip
+BenchmarkRecoverCkpt64K-16    	      10	 267733941 ns/op	     13214 logKiB	     13059 redo	        37.00 skip
+BenchmarkRecoverCleaner-16    	      10	 161028980 ns/op	     11653 logKiB	         0 redo	         0 skip
+PASS
+ok  	minidb/internal/db	153.120s

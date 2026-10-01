@@ -1,0 +1,34 @@
+dữ liệu: ev 20000 hàng, dim 200 hàng, index ev_kind(kind), buffer pool 1024 frame
+
+=== 3. ORDER BY: sắp trong RAM vs sắp ngoài (external merge sort)
+    câu: SELECT city FROM ev WHERE id < W ORDER BY city   (city KHÔNG có index)
+
+       W  hạn mức  thời gian     vs RAM   số run     file tạm hàng đọc lại
+    5000     5001     4.069ms      1.00x        0            0            0
+    5000     2500     6.756ms      1.66x        2            2         5000
+    5000      625     6.956ms      1.71x        8            8         5000
+    5000      512     6.824ms      1.68x       10           10         5000
+    5000      156     8.691ms      2.14x       33           33         5000
+    5000       64    11.281ms      2.77x       79           79         5000
+
+   20000    20001    18.092ms      1.00x        0            0            0
+   20000    10000    29.546ms      1.63x        2            2        20000
+   20000     2500    28.645ms      1.58x        8            8        20000
+   20000      625    30.127ms      1.67x       32           32        20000
+   20000      512    31.853ms      1.76x       40           40        20000
+   20000       64    47.464ms      2.62x      313          313        20000
+
+    Đọc: cái giá của việc tràn ra đĩa là một BẬC THANG, không phải một đường
+    dốc. Bước qua ngưỡng "không vừa RAM" tốn ~1.3-1.7x; sau đó giảm hạn mức
+    thêm 20 lần (10000 -> 512) gần như KHÔNG tốn thêm gì, dù số run tăng 20 lần.
+    Chỉ khi số run lên tới hàng trăm thì bề rộng phép trộn mới hiện ra.
+
+    Suy ra được một điều từ chính chỗ phẳng ấy: phép SO SÁNH không phải chỗ
+    tốn. Đi từ 2 run lên 40 run là 5.3 lần nhiều so sánh hơn trong bước trộn
+    (log2 40 / log2 2), mà thời gian không đổi — nên cái tốn là ghi và đọc đĩa.
+    Trộn rẻ vì khoá được ghi ra ở dạng mã hoá GIỮ THỨ TỰ của phase 7, nên so
+    sánh là memcmp trên byte thô (đo riêng ở phase 7: rẻ hơn so theo kiểu 5.7x).
+
+    Đây là lý do tinh chỉnh work_mem của Postgres có một VÁCH chứ không có độ
+    dốc: điều đáng biết là ở TRÊN hay DƯỚI ngưỡng, không phải cách ngưỡng bao xa.
+

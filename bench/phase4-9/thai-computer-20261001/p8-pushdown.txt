@@ -1,0 +1,20 @@
+dữ liệu: ev 20000 hàng, dim 200 hàng, index ev_kind(kind), buffer pool 1024 frame
+
+=== 4. predicate pushdown: bật vs tắt, trong CHÍNH engine này
+
+câu                                                           tắt(ms)    bật(ms)    tỉ số   hàng(tắt)   hàng(bật)
+SELECT city FROM ev WHERE kind = 3 AND id < 20000               8.057      0.098   82.61x       20000         200
+SELECT ev.city, dim.name FROM ev JOIN dim ON ev.kind=dim.…      9.071      0.226   40.07x       20200         300
+SELECT ev.city, dim.name FROM ev JOIN dim ON ev.kind=dim.…      9.356      0.520   17.98x       20200        1005
+
+    Đọc: ba cơ chế khác nhau, và ba dòng trên là ba cơ chế ấy.
+      1. một bảng: điều kiện thành KHOẢNG QUÉT trên index — hàng không khớp
+         không được ĐỌC, chứ không phải đọc rồi bỏ. Đây là chỗ ăn nhiều nhất.
+      2. join, điều kiện trên vế build: build teo lại nên bảng băm nhỏ hơn và
+         ít khả năng tràn đĩa hơn.
+      3. join, điều kiện SUY RA qua phép bằng: `ON ev.kind=dim.kind AND
+         dim.kind<5` cho suy ra `ev.kind<5`, và ĐÓ mới là điều kiện đáng đẩy —
+         nó thu vế PROBE (20000 hàng), còn đẩy dim.kind chỉ thu vế build (200).
+         Trước khi có luật suy ra, dòng thứ ba chỉ đo được 1.18x; chính con số
+         ấy chỉ ra luật còn thiếu. Xem plan.propagate.
+

@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/lock
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkAcquireUncontended-16    	 3559296	       342.3 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireUncontended-16    	 3537732	       336.7 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireUncontended-16    	 3519238	       337.5 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=1-16         	 2731408	       437.2 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=1-16         	 2748321	       386.0 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=1-16         	 6505404	       176.3 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=16-16        	 3556640	       335.5 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=16-16        	 3500217	       342.6 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=16-16        	 3589399	       338.0 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=256-16       	  457688	      2480 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=256-16       	  485686	      2458 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireShared/holders=256-16       	  445874	      2487 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=1-16       	 5946406	       200.6 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=1-16       	 6263626	       194.6 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=1-16       	 6017628	       193.7 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=16-16      	 2434532	       487.6 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=16-16      	 2467173	       487.2 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=16-16      	 2454162	       489.5 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=256-16     	  256640	      4627 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=256-16     	  249637	      4644 ns/op	      64 B/op	       1 allocs/op
+BenchmarkAcquireDisjoint/holders=256-16     	  250534	      4712 ns/op	      64 B/op	       1 allocs/op
+BenchmarkOverlaps-16                        	100000000	        11.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOverlaps-16                        	100000000	        11.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOverlaps-16                        	100000000	        11.11 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	minidb/internal/lock	35.574s

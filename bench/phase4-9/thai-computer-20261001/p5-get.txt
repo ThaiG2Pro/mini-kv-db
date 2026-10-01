@@ -1,0 +1,15 @@
+goos: linux
+goarch: amd64
+pkg: minidb/internal/db
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkGetWithWAL-16       	  300000	      1116 ns/op
+BenchmarkGetWithWAL-16       	  300000	      1098 ns/op
+BenchmarkGetWithWAL-16       	  300000	      1021 ns/op
+BenchmarkGetNoWAL-16         	  300000	      1038 ns/op
+BenchmarkGetNoWAL-16         	  300000	      1033 ns/op
+BenchmarkGetNoWAL-16         	  300000	      1047 ns/op
+BenchmarkGetWithWALRaw-16    	  300000	      1064 ns/op
+BenchmarkGetWithWALRaw-16    	  300000	      1058 ns/op
+BenchmarkGetWithWALRaw-16    	  300000	      1074 ns/op
+PASS
+ok  	minidb/internal/db	5.277s

@@ -16,7 +16,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: lab
       MYSQL_DATABASE: lab
-    command: ["--innodb-buffer-pool-size=256M"]
+    command: ["--innodb-buffer-pool-size=256M", "--innodb_use_native_aio=0", "--innodb_flush_method=fsync"]
     ports: ["53306:3306"]
   maria:
     image: mariadb:11.8

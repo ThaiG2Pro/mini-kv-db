@@ -11,6 +11,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DIR=${DIR:-./data/iolab}
+mkdir -p "$DIR"
+DIR=$(cd "$DIR" && pwd)
 FILEMB=${FILEMB:-512}
 REPEAT=${REPEAT:-5}
 OUT="bench/baseline/$(hostname)-$(date +%Y%m%d)"

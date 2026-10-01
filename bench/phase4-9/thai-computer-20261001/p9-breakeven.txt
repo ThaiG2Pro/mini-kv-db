@@ -1,0 +1,43 @@
+== 1. điểm hoà vốn selectivity (1000000 hàng, k ngẫu nhiên, trung vị 9 lần, ms) ==
+
+-- pg (nạp 1000000 hàng mất 5.289s)
+sel            seq     index    bitmap   index/seq   planner tự chọn
+0.1%          99.4       1.5       2.0       0.02x   Bitmap Heap Scan
+1.0%         105.8      11.6      17.7       0.11x   Bitmap Heap Scan
+2.0%         109.7      21.8      23.5       0.20x   Bitmap Heap Scan
+5.0%          78.7      34.4      27.6       0.44x   Bitmap Heap Scan
+10.0%         63.0      57.8      43.3       0.92x   Bitmap Heap Scan
+20.0%         83.0     116.2      77.0       1.40x   Bitmap Heap Scan
+30.0%        103.9     173.8     107.8       1.67x   Bitmap Heap Scan
+50.0%        144.2     289.3     160.7       2.01x   Seq Scan
+70.0%        181.3     408.1     202.2       2.25x   Seq Scan
+100.0%       238.0     563.9     263.4       2.37x   Seq Scan
+  -> hoà vốn index vs seq ĐO ĐƯỢC: 11.7%
+
+-- mysql (nạp 1000000 hàng mất 5.582s)
+sel            seq     index   index/seq   planner tự chọn
+0.1%         258.8       2.9       0.01x   type=range key=be_k (Using index condition)
+1.0%         259.7      29.0       0.11x   type=range key=be_k (Using index condition)
+2.0%         158.2      31.9       0.20x   type=range key=be_k (Using index condition)
+5.0%          98.3      75.9       0.77x   type=range key=be_k (Using index condition)
+10.0%        100.3     150.3       1.50x   type=range key=be_k (Using index condition)
+20.0%        104.3     295.2       2.83x   type=ALL (Using where)
+30.0%        108.4     442.9       4.08x   type=ALL (Using where)
+50.0%        114.6     736.7       6.43x   type=ALL (Using where)
+70.0%        119.1    1026.5       8.62x   type=ALL (Using where)
+100.0%       124.0    1462.5      11.79x   type=ALL (Using where)
+  -> hoà vốn index vs seq ĐO ĐƯỢC: 6.6%
+
+-- maria (nạp 1000000 hàng mất 3.691s)
+sel            seq     index   index/seq   planner tự chọn
+0.1%          81.7       1.1       0.01x   type=range key=be_k (Using index condition)
+1.0%          82.0      11.7       0.14x   type=range key=be_k (Using index condition)
+2.0%          82.9      26.5       0.32x   type=range key=be_k (Using index condition)
+5.0%          84.4      69.6       0.82x   type=range key=be_k (Using index condition)
+10.0%         87.2     140.6       1.61x   type=ALL (Using where)
+20.0%         93.1     281.2       3.02x   type=ALL (Using where)
+30.0%         99.2     422.9       4.26x   type=ALL (Using where)
+50.0%        108.7     699.2       6.43x   type=ALL (Using where)
+70.0%        114.1     998.2       8.75x   type=ALL (Using where)
+100.0%       120.9    1441.8      11.93x   type=ALL (Using where)
+  -> hoà vốn index vs seq ĐO ĐƯỢC: 6.1%
