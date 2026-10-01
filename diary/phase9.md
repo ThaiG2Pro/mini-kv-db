@@ -1141,6 +1141,65 @@ nằm ở chỗ khác. Nghi phạm: `db.Get` chép cả chuỗi (60 version) ra 
 
 Đo lại trên Linux thuần: `./scripts/p91-seqscan.sh`, hướng dẫn ở `docs/linux-phase9.md`.
 
+### 2026-10-01 — bảng 10: trả nợ P6-2 — chi phí theo độ sâu là CHÉP và DỰNG, không phải giải mã
+
+Bảng 9 để lại một dấu hiệu: bỏ hẳn việc dựng `Chain` mà `GetChainDepth` ở depth=60 vẫn cho
+`newest` ≈ `oldest`. Nghi phạm ghi ở đó là `db.Get` chép cả chuỗi. Profile `depth=60/newest`
+(e48552f + bảng 9):
+
+```console
+$ go test ./internal/txn/ -run '^$' -bench 'GetChainDepth/depth=60$/newest' -benchtime=300000x -benchmem -cpuprofile gc60.prof
+BenchmarkGetChainDepth/depth=60/newest-6  	  300000	      5520 ns/op	     897 B/op	       2 allocs/op
+$ go tool pprof -top -cum -focus 'Txn..Get$' txn.test gc60.prof
+     1.50s  txn.(*Txn).Get
+     0.84s    txn.VisibleRaw            ← 56%: đi hết 60 header để kiểm đuôi
+     0.43s      txn.(*chainReader).next
+     0.64s    db.(*DB).Get              ← 43%
+     0.51s      runtime.memmove         (dòng `copy(out, v)` của btree.Get, 897 byte)
+```
+
+Dòng `copy(out, v)` bị tính 0.51s, tức 1.7µs cho 897 byte, nghe vô lý. Mình nghi bộ đo trước, nên
+đo thẳng trên máy này: riêng `copy` 897 byte mất **18–25ns**, còn `make` rồi `copy` mất
+**890–1865ns**. Vậy cái đắt là lần cấp phát; nó bị tính vào `memmove` vì đó là lần đầu chạm vào
+vùng nhớ mới. Page fault không phải nguyên nhân chính: đặt `GODEBUG=madvdontneed=0` thì fault về 0
+mà vẫn mất ~550ns (máy hôm đó đang bận, xem bảng 9).
+
+Hai khoản, cả hai đều tỉ lệ với độ sâu, và cả hai đều **chung cho `newest` lẫn `oldest`**. Đó
+chính là lý do hai nhánh bằng nhau:
+
+1. `btree.Get` cấp phát rồi chép cả chuỗi ra, trong khi người gọi chỉ cần một bản. **Sửa:**
+   `btree.Tree.GetFunc` / `db.DB.GetFunc` gọi `fn` với value trỏ thẳng vào page lúc page còn pin,
+   và `Txn.Get` chỉ chép bản nhìn thấy được. `Tree.Get` giờ là `GetFunc` cộng một lần chép.
+2. `chainReader.next` dựng một `Version` 48 byte cho từng bản trong 60 bản, chỉ để vứt đi.
+   Profile từng dòng: `return v, nil` chiếm 490 / 640ms. **Sửa:** `head()` chỉ trả cờ, xmin và
+   thân; `VisibleRaw` chỉ dựng `Version` cho đúng bản trả về. Mọi phép kiểm canonical vẫn nằm một
+   chỗ (`head`), và vẫn đi hết đuôi chuỗi.
+
+Đo theo cặp, 10 cặp xen kẽ, so với 348f120 (trước cả bảng 9):
+
+```console
+depth=1 newest:  cũ 348,  mới 299 ns (trung vị); tỉ số mới/cũ 0.85 [0.80, 0.88]
+depth=60 newest: cũ 5213, mới 708 ns (trung vị); tỉ số mới/cũ 0.14 [0.13, 0.16]
+depth=60 oldest: cũ 3878, mới 714 ns (trung vị); tỉ số mới/cũ 0.18 [0.17, 0.19]
+B/op ở depth=60: 897 → 4
+```
+
+Khoảng tứ phân vị hẹp và nằm xa 1.0, nên kết quả đứng được dù máy nhiễu.
+
+**So với kỳ vọng ghi trong nợ P6-2 (từ phase 6):** "`newest` ở depth=60 tiến gần `newest` ở
+depth=1; `oldest` giữ nguyên. Nếu cả hai đều giảm thì bench đang đo cái khác." **Cả hai đều giảm**,
+5–7 lần. Bench không sai. Sai là mô hình: phase 6 tưởng chi phí nằm ở *giải mã* (`DecodeChain`
+đọc cả chuỗi), và giải mã lười sẽ chỉ cứu được nhánh `newest`. Thực ra chi phí nằm ở hai việc
+làm cho MỌI bản, bất kể snapshot: chép cả chuỗi ra khỏi page, và dựng struct cho từng bản. Bỏ hai
+việc đó thì cả hai nhánh cùng nhanh lên.
+
+**Còn lại:** depth=60 vẫn đắt hơn depth=1 khoảng 2.4 lần (708 so với 299ns). Đó là bước đi hết 60
+header để kiểm đuôi, và mình **cố ý giữ** nó: một chuỗi hỏng ở đuôi phải báo lỗi ở lần đọc đầu
+tiên chạm vào nó. Phần còn lại của phí phình version là việc của vacuum, không phải của đường đọc.
+
+Test: `go test ./internal/{btree,db,txn,table,query}` xanh. `FuzzChainCodec` 45s sạch; nó đối chiếu
+`VisibleRaw` với `DecodeChain + Visible` và đã từng bắt được bản dừng sớm (bảng 9).
+
 ### 2026-09-29 — các thí nghiệm nhỏ cho blog (bài 1, 2, 3, 5, 8, 10)
 
 Mỗi bài blog có một script trong `blog/lab/`. Output đầy đủ nằm ngay trong bài; ở đây chỉ ghi các
@@ -1196,7 +1255,8 @@ Ba chỗ đo sai hoặc bất ngờ:
 | MySQL mất ít hơn MariaDB ở `=0` vì một cơ chế lạ nào đó của MySQL 8 | Chính là luồng `log_writer`: tắt nó (`innodb_log_writer_threads=OFF`) thì mất 689 mỗi lần kill thay vì 1.2 | `go run . -work crash -db mysql`: 6 so với 3447 commit mất / 5 vòng | Trả nợ P9-6; thêm chế độ vào `crash.go` |
 | Hash join tràn đĩa thì chậm hơn chạy trong RAM | Postgres: 16 batch **nhanh hơn** 1 batch 1.2–1.3x (268–291 vs 344–366ms) | `blog/lab/10-explain-pg.sql` mục 6, 3 lượt | Không sửa; ghi vào blog bài 10, nợ P9-7 |
 | Postgres nhanh lên khi tràn đĩa là do page fault: glibc trả bộ nhớ bảng băm cho OS sau mỗi câu | Page fault có thật (4000 lần mỗi câu) nhưng chỉ chiếm ~20ms. Khoảng chênh tăng tuyến tính theo số hàng probe, và vẫn còn khi malloc giữ bộ nhớ | `go run . -work hashjoin -db pg,pgm`: B trên pgm, fault 3, chênh vẫn 78 → 332ms; C: pg − pgm = 23ms | Giữ H1 (cache); đếm trực tiếp chờ `scripts/p97-hashjoin.sh` |
-| *(P6-2)* `newest` ≈ `oldest` ở depth=60 nghĩa là chi phí nằm ở việc `DecodeChain` dựng cả chuỗi | Bỏ hẳn việc dựng `Chain` (`VisibleRaw`) mà depth=60 vẫn `newest` ≈ `oldest`: chi phí theo độ sâu nằm ở chỗ khác, nghi `db.Get` chép cả chuỗi | `go test ./internal/txn -bench GetChainDepth -benchtime=200000x`: 2125–2211 so với 2355–2640ns (máy nhiễu) | Ghi vào P6-2; chưa sửa |
+| *(P6-2)* `newest` ≈ `oldest` ở depth=60 nghĩa là chi phí nằm ở việc `DecodeChain` dựng cả chuỗi | Bỏ hẳn việc dựng `Chain` (`VisibleRaw`) mà depth=60 vẫn `newest` ≈ `oldest`: chi phí theo độ sâu nằm ở chỗ khác, nghi `db.Get` chép cả chuỗi. Bảng 10: đúng một phần. `btree.Get` cấp phát + chép (43%) **và** dựng `Version` cho từng bản (56%), cả hai chung cho hai nhánh | `go test ./internal/txn -bench GetChainDepth`: 2125–2211 so với 2355–2640ns; profile ở bảng 10 | `GetFunc` + `chainReader.head`; depth=60 5213 → 708ns |
+| *(phase 6)* Giải mã lười sẽ cứu nhánh `newest`, còn `oldest` giữ nguyên | Cả hai cùng nhanh lên 5–7 lần: chi phí chưa bao giờ nằm ở giải mã hay vòng visibility, mà ở việc chép cả chuỗi và dựng struct cho từng bản | 10 cặp A/B: `newest` 0.14x, `oldest` 0.18x so với 348f120 | Trả P6-2 (bảng 10) |
 | `glibc.malloc.mmap_threshold=1GB` tắt được `mmap` cho khối lớn | Trần là 32MB; giá trị lớn hơn bị bỏ qua mà không báo gì | `rl-pgm` vẫn 4000 fault / câu cho tới khi đặt `33554432` | Ghi trần vào comment của `docker-compose.yml` |
 
 ---
@@ -1274,6 +1334,7 @@ lệch.
 
 ## Nợ kỹ thuật
 
+- [x] 🔧 P6-2 (của phase 6) · chuỗi version: **trả ở bảng 10**, depth=60 5213 → 708ns, 897 → 4 B/op
 - [ ] 📏 P9-1 · Đo thẳng phí quét một hàng của minidb, tách phần `keys.Decode` (P7-1) khỏi `DecodeChain` (P6-2). **Bảng 9, lượt 1:** đã tách (54% so với 7%), đã sửa (7 → 2 lần cấp phát mỗi hàng). Thời gian và điểm hoà vốn < 15% chờ đo lại: `./scripts/p91-seqscan.sh` trên Linux thuần
 - [ ] ⏳ P9-2 · `txnlab` chưa có ô "RR kiểu MySQL" (đọc snapshot, ghi trên bản mới nhất)
 - [ ] 📏 P9-3 · Chưa đo UUID trên Postgres khi riêng index PK lớn hơn RAM (cần giới hạn cả page cache: `docker --memory`)

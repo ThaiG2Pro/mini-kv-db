@@ -420,27 +420,7 @@ tại chỗ vì nó làm luật visibility hiện ra rõ nhất.
 **Cách trả:** đẩy bản cũ ra khỏi entry — hoặc overflow page (nợ P4-1, cùng một cơ chế), hoặc một
 undo segment riêng. Cả hai đều đổi trần cứng thành một lần truy đĩa thêm cho reader bản cũ.
 **Kỳ vọng cần viết ra trước khi đo:** `BenchmarkGetChainDepth/oldest` sẽ đắt hơn `newest` rõ rệt
-sau khi trả — hiện tại chúng bằng nhau (0.98x), xem P6-2.
-
-### 🔧 P6-2 · `DecodeChain` giải mã trọn chuỗi dù chỉ cần một version
-
-```bash
-go test ./internal/txn/ -run '^$' -bench 'GetChainDepth' -benchtime=200000x -count=3
-```
-
-Đã đo: ở depth=60, nhánh `oldest` / `newest` = 1480/1450 = **0.98x**. Nếu chi phí nằm ở vòng lặp
-visibility thì đọc bản **cũ nhất** phải đắt hơn đọc bản **mới nhất** rõ rệt. Nó không ⇒ chi phí
-nằm ở `DecodeChain`, nó giải mã **cả chuỗi** trước khi ai đó hỏi cần version nào.
-
-**Cách trả:** giải mã **lười** — đi con trỏ qua header từng version, chỉ dựng `Version` cho bản
-thật sự được trả về. Header cố định 11 byte nên bước nhảy là O(1).
-**Kỳ vọng:** `newest` ở depth=60 tiến gần về `newest` ở depth=1 (~171ns); `oldest` giữ nguyên.
-Nếu **cả hai** đều giảm thì bench đang đo cái khác — nghi bench trước.
-
-**Đã làm ở P9-1, và giả thuyết của mục này không đứng được:** `VisibleRaw` đi trên byte, không
-dựng `Chain` (dùng cho `Txn.Get` và `Iter`). Vậy mà depth=60 vẫn cho `newest` ≈ `oldest`
-(2125–2211 so với 2355–2640ns, máy nhiễu). Chi phí theo độ sâu nằm ở chỗ khác. Nghi `db.Get` chép
-cả chuỗi ra một bản riêng. **Trả tiếp bằng:** profile `GetChainDepth/depth=60/newest`.
+sau khi trả — phase 6 đo được 0.98x; P6-2 đã trả ở phase 9 (bảng 10), giờ cả hai ~710ns ở depth=60.
 
 ### 🔧 P6-3 · Lock manager không có chỉ mục theo đối tượng
 
@@ -831,6 +811,7 @@ instructions/cycles). Sau đó mới xem minidb có hưởng được điều n�
 | 📏 P0-5 · `fadvise` có thật sự đẩy cache ra? | cờ `-verify-cache` dùng `mincore(2)` | `residency 100.0% -> 0.0%` |
 | 🔧 P1-4 · `WriteAt` trả `n < len(p)` mà `err == nil` | `writeFull()` trong `pager.go` | `TestShortWriteIsAnError` — trước khi sửa: *"Commit báo THÀNH CÔNG dù lời ghi chỉ đi được 4095/4096 byte"* |
 | 🔧 P1-5 · Không có cách kiểm tra file từ bên ngoài | `pager.Verify()` + `cmd/dbcheck` | Bắt được: double free, freelist tự trỏ vào chính nó, meta page bị liệt kê là rỗng, chuỗi có vòng lặp, file cắt giữa page, rò rỉ đuôi file |
+| 🔧 P6-2 · `DecodeChain` giải mã trọn chuỗi dù chỉ cần một version | `btree.GetFunc` (đọc chuỗi ngay trong page, chỉ chép bản nhìn thấy được) + `chainReader.head` (không dựng `Version` cho bản bị bỏ qua); vẫn kiểm hết đuôi chuỗi | 10 cặp A/B so với 348f120: depth=60 `newest` 5213 → **708ns** (0.14x), `oldest` 3878 → 714ns, 897 → 4 B/op. Kỳ vọng cũ ("chỉ `newest` giảm") **sai**: cả hai giảm, vì chi phí là chép và dựng struct chứ không phải giải mã. diary/phase9.md bảng 10 |
 | 🔧 P2-0 · `Compact` dùng insertion sort, giả định offset đã gần sắp xếp | `slices.SortFunc` trên mảng nằm trên stack | `TestCompactOrderIsScrambled` dựng được thế 299/300 nghịch thế; `BenchmarkCompactScrambled` 229810 → 9169 ns/op = **25x**, 0 alloc |
 | 🔧 P2-0b · `Verify` cấp phát 20KB mỗi lần gọi, bóp nghẹt fuzz | bitmap 512 byte trên stack; giữ bản cũ làm `verifyRef` để kiểm tra chéo | `BenchmarkVerifyRefFullPage` 19768 ns / 20576 B vs `BenchmarkVerifyFullPage` 3583 ns / **0 B**; fuzz đi từ 63k lên **1 421 899** exec |
 | 🔧 P1-1 · Page mồ côi sau rollback | `bufpool.Discard(id)` trước `pg.FreeNow(id)` trong cả `Txn.Abort` lẫn `recover()` | `TestAbortLeavesNoOrphanPage` — và nó **tố oan một lần**: "abort nới 50 page nhưng chỉ trả 49" hoá ra là page chứa freelist, phép đếm sai chứ không phải code. `dbcheck` im lặng sau 120 txn có abort |

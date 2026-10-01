@@ -159,21 +159,26 @@ func (t *Txn) Get(key []byte) (val []byte, ok bool, err error) {
 		}
 	}
 	snap := t.readSnap()
-	raw, err := t.s.d.Get(key)
+	// Đọc chuỗi ngay trong page (không chép cả chuỗi ra), chỉ chép bản nhìn
+	// thấy được. Nợ P6-2: chép cả chuỗi là một khoản tỉ lệ với độ sâu.
+	var out []byte
+	var has bool
+	err = t.s.d.GetFunc(key, func(raw []byte) error {
+		v, ok, err := VisibleRaw(raw, snap)
+		if err != nil || !ok || v.Deleted {
+			return err
+		}
+		out, has = make([]byte, len(v.Val)), true // không phải nil, kể cả khi rỗng: như bản cũ
+		copy(out, v.Val)
+		return nil
+	})
 	if errors.Is(err, btree.ErrKeyNotFound) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
-	v, has, err := VisibleRaw(raw, snap)
-	if err != nil {
-		return nil, false, err
-	}
-	if !has || v.Deleted {
-		return nil, false, nil
-	}
-	return v.Val, true, nil
+	return out, has, nil
 }
 
 // GetForUpdate đọc một khóa và lấy luôn lock X trên nó — chính là

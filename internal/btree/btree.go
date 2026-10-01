@@ -196,28 +196,44 @@ func (t *Tree) release(path []crumb) {
 // Get tìm key. Thả pin của mỗi tầng ngay khi đã lấy được con trỏ xuống tầng
 // dưới: đường đọc không cần nhớ đường về.
 func (t *Tree) Get(key []byte) ([]byte, error) {
+	var out []byte
+	err := t.GetFunc(key, func(v []byte) error {
+		// Copy: cell trỏ thẳng vào arena của pool, hết pin là page có thể
+		// bị đuổi và byte đó thành page khác (bất biến số 1 của phase 3).
+		out = make([]byte, len(v))
+		copy(out, v)
+		return nil
+	})
+	return out, err
+}
+
+// GetFunc là Get không chép: fn nhận value trỏ THẲNG vào page, trong lúc page
+// còn bị pin. v chỉ sống trong fn; giữ nó lâu hơn là đọc phải page khác sau
+// khi pool đuổi page này. fn không được gọi lại vào cây (đang giữ pin, và ở
+// tầng db là đang giữ latch).
+//
+// Có mặt vì nợ P6-2: một chuỗi version 60 bản là ~900 byte, và txn.Get chỉ
+// cần đúng MỘT bản trong đó. Get chép cả 900 byte ra rồi mới đọc; trên máy đo,
+// riêng lần cấp phát + chép ấy là 1/3 thời gian của Get ở depth=60.
+func (t *Tree) GetFunc(key []byte, fn func(v []byte) error) error {
 	if len(key) == 0 {
-		return nil, ErrEmptyKey
+		return ErrEmptyKey
 	}
 	id := t.root
 	for {
 		n, err := t.pin(id)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if n.isLeaf() {
 			i, exact := n.search(key)
 			if !exact {
 				t.unpin(id, false)
-				return nil, fmt.Errorf("%w: %q", ErrKeyNotFound, key)
+				return fmt.Errorf("%w: %q", ErrKeyNotFound, key)
 			}
-			// Copy: cell trỏ thẳng vào arena của pool, hết pin là page có thể
-			// bị đuổi và byte đó thành page khác (bất biến số 1 của phase 3).
-			v := leafVal(n.cell(i))
-			out := make([]byte, len(v))
-			copy(out, v)
+			err := fn(leafVal(n.cell(i)))
 			t.unpin(id, false)
-			return out, nil
+			return err
 		}
 		child := n.childAt(n.childIndex(key))
 		t.unpin(id, false)

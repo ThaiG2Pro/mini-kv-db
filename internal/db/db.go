@@ -359,6 +359,14 @@ func (d *DB) Get(key []byte) ([]byte, error) {
 	return d.tree.Get(key)
 }
 
+// GetFunc: xem btree.Tree.GetFunc. fn chạy trong lúc giữ d.mu, nên nó phải
+// ngắn và không được gọi lại vào DB.
+func (d *DB) GetFunc(key []byte, fn func(v []byte) error) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.tree.GetFunc(key, fn)
+}
+
 func (d *DB) Has(key []byte) (bool, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

@@ -927,7 +927,7 @@ do Postgres rollback bằng 2 bit trong clog chứ không bằng cách dán lạ
 ## Nợ kỹ thuật / để dành cho sau
 
 - [ ] **P6-1** · Chuỗi version nằm **tại chỗ**, trần cứng ~2KB một khóa
-- [ ] **P6-2** · `DecodeChain` giải mã **trọn chuỗi** dù chỉ cần một version (`newest`/`oldest` = 0.98x)
+- [x] **P6-2** · `DecodeChain` giải mã **trọn chuỗi** dù chỉ cần một version (`newest`/`oldest` = 0.98x). **Trả ở phase 9, bảng 10:** chi phí thật là chép cả chuỗi + dựng struct cho từng bản, không phải giải mã. depth=60 5213 → 708ns
 - [ ] **P6-3** · Lock manager không có **chỉ mục theo đối tượng** (256 holder rời rạc = 22.3x)
 - [ ] **P6-4** · `Txn.Scan` **materialize** cả kết quả thay vì stream
 - [ ] **P6-5** · Không có **vacuum nền** (cùng họ với P5-1: thiếu người dọn page)

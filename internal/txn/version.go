@@ -136,12 +136,15 @@ func VisibleRaw(b []byte, s Snapshot) (Version, bool, error) {
 	var out Version
 	found := false
 	for r.more() {
-		v, err := r.next()
+		// head, không phải next: dựng một Version (48 byte) cho mỗi bản chỉ
+		// để vứt đi là phần lớn thời gian của Get ở depth=60 (đo: dòng
+		// `return v, nil` của next chiếm 490 / 640ms).
+		f, xmin, body, err := r.head()
 		if err != nil {
 			return Version{}, false, err
 		}
-		if !found && s.Visible(v.Xmin) {
-			out, found = v, true
+		if !found && s.Visible(xmin) {
+			out, found = Version{Xmin: xmin, Deleted: f&flagDeleted != 0, Val: body}, true
 		}
 	}
 	return out, found, r.end()
@@ -164,34 +167,43 @@ func newChainReader(b []byte) (chainReader, error) {
 func (r *chainReader) more() bool { return r.i < r.n }
 
 func (r *chainReader) next() (Version, error) {
+	f, xmin, body, err := r.head()
+	if err != nil {
+		return Version{}, err
+	}
+	return Version{Xmin: xmin, Deleted: f&flagDeleted != 0, Val: body}, nil
+}
+
+// head kiểm header của version kế tiếp, nhảy qua nó, và trả cờ, xmin, thân
+// (thân nil với tombstone). Mọi phép kiểm canonical nằm ở đây, một chỗ.
+func (r *chainReader) head() (f byte, xmin uint64, body []byte, err error) {
 	b, i := r.b, r.i
 	if len(b) < 11 {
-		return Version{}, fmt.Errorf("%w: thiếu header version %d", ErrBadChain, i)
+		return 0, 0, nil, fmt.Errorf("%w: thiếu header version %d", ErrBadChain, i)
 	}
-	f := b[0]
+	f = b[0]
 	if f&^flagsKnown != 0 {
-		return Version{}, fmt.Errorf("%w: version %d có bit cờ lạ %#02x", ErrBadChain, i, f)
+		return 0, 0, nil, fmt.Errorf("%w: version %d có bit cờ lạ %#02x", ErrBadChain, i, f)
 	}
-	xmin := binary.LittleEndian.Uint64(b[1:])
+	xmin = binary.LittleEndian.Uint64(b[1:])
 	ln := int(b[9]) | int(b[10])<<8
 	b = b[11:]
 	if len(b) < ln {
-		return Version{}, fmt.Errorf("%w: version %d nói %d byte, còn %d", ErrBadChain, i, ln, len(b))
+		return 0, 0, nil, fmt.Errorf("%w: version %d nói %d byte, còn %d", ErrBadChain, i, ln, len(b))
 	}
-	v := Version{Xmin: xmin, Deleted: f&flagDeleted != 0}
-	if v.Deleted {
+	if f&flagDeleted != 0 {
 		// Tombstone không mang thân. Nếu nó nói có thì byte trên đĩa
 		// không phải cái mà Encode sinh ra được — cũng do fuzzer tìm
 		// ra, cùng một họ với bit cờ lạ ở trên.
 		if ln != 0 {
-			return Version{}, fmt.Errorf("%w: version %d là tombstone nhưng nói %d byte thân",
+			return 0, 0, nil, fmt.Errorf("%w: version %d là tombstone nhưng nói %d byte thân",
 				ErrBadChain, i, ln)
 		}
 	} else {
-		v.Val = b[:ln]
+		body = b[:ln]
 	}
 	r.b, r.i = b[ln:], i+1
-	return v, nil
+	return f, xmin, body, nil
 }
 
 func (r *chainReader) end() error {
