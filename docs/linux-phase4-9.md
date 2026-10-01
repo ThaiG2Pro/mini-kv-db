@@ -1,5 +1,7 @@
 # Đo lại phase 4–9 trên máy Linux thuần
 
+> Bản đồ của cả buổi đo (thứ tự, thời gian, chỗ hay vấp): [`linux-runbook.md`](./linux-runbook.md).
+
 Mọi con số **thời gian** của phase 4–9 đều đo trên WSL2, nơi số đơn lẻ có hôm dao động ±40%. Chúng
 vẫn đủ để rút ra **thứ tự lớn nhỏ**, nhưng tỉ số nào dùng để ra quyết định thiết kế thì nên kiểm
 lại trên máy thật. File này liệt kê từng tỉ số đó, kèm số WSL2 để so.

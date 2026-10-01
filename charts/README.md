@@ -12,7 +12,7 @@ uv run charts/plot.py --out ~/blog/img --label "Ryzen 7, NVMe"
 
 ## Quy trình
 
-1. Trên máy Linux, chạy các script đo (hướng dẫn: [`docs/linux-baseline.md`](../docs/linux-baseline.md),
+1. Trên máy Linux, chạy các script đo theo [`docs/linux-runbook.md`](../docs/linux-runbook.md) (chi tiết: [`docs/linux-baseline.md`](../docs/linux-baseline.md),
    [`docs/linux-phase4-9.md`](../docs/linux-phase4-9.md), [`docs/linux-phase9.md`](../docs/linux-phase9.md)).
    Kết quả nằm ở `bench/<loại>/<host>-<ngày>/`.
 2. `uv run charts/plot.py`. Script lấy thư mục **mới nhất** của mỗi loại. Muốn chọn thư mục khác thì

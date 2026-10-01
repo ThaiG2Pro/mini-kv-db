@@ -1,5 +1,7 @@
 # Trả nợ Phase 9 trên máy Linux thuần
 
+> Bản đồ của cả buổi đo (thứ tự, thời gian, chỗ hay vấp): [`linux-runbook.md`](./linux-runbook.md).
+
 Phase 9 đo trên WSL2. Hầu hết kết luận ở đó là **tỉ số** hoặc **đếm sự kiện** (commit mất, page
 ghi, hàng đọc), nên vẫn đứng được. Hai món cần máy thật:
 

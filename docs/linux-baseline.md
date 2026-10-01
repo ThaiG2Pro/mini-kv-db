@@ -1,5 +1,7 @@
 # Trả nợ Phase 0–3 trên máy Linux thuần
 
+> Bản đồ của cả buổi đo (thứ tự, thời gian, chỗ hay vấp): [`linux-runbook.md`](./linux-runbook.md).
+
 Bản đo đầu tiên chạy trên WSL2 (ext4 trên đĩa ảo trên NTFS). Nó đủ để rút ra **tỉ số**,
 nhưng để lại 5 món nợ ở phase 0 và 3 món "chạy lại bench" ở phase 1–3. File này là **hướng dẫn
 trả từng món**, mỗi món một lệnh cụ thể.

@@ -29,7 +29,7 @@ cmd/dbcheck/    fsck cho file minidb — meta, freelist, double free, page mồ 
 reallab/        phase 9 — năm bảng trên Postgres/MySQL/MariaDB thật (module Go riêng + docker-compose)
 blog/           series "Mở nắp database" cho dev mới
 scripts/        linux-baseline.sh (đo baseline có thể so máy), dm-flakey.sh (bơm lỗi thiết bị)
-docs/           debts.md (sổ nợ + lệnh trả từng món), linux-baseline.md + linux-phase4-9.md + linux-phase9.md (đo trên Linux thuần)
+docs/           debts.md (sổ nợ + lệnh trả từng món), linux-runbook.md (bản đồ) + linux-baseline / phase4-9 / phase9.md (đo trên Linux thuần)
 bench/baseline/ kết quả đo lưu theo máy + ngày (text + JSON)
 internal/pager/ phase 1 — file = mảng page 4KB, meta page kép + crc32c, freelist
 internal/page/  phase 2 — slotted page: record biến độ dài, slot indirection, compact
@@ -93,6 +93,9 @@ make fuzz-btree                     # phase 4: fuzz chuỗi Put/Delete, đối c
 make test                           # toàn bộ test (40 điểm crash của pager + bất biến của page)
 make check                          # fsck file data/test.db
 ```
+
+**Sang máy Linux thuần?** Làm theo [`docs/linux-runbook.md`](./docs/linux-runbook.md): một buổi khoảng 2 giờ,
+từ `git clone` tới ảnh cho blog. Chi tiết từng phần:
 
 Đo trên máy Linux thuần và trả dần các món nợ của phase 0:
 [`docs/linux-baseline.md`](./docs/linux-baseline.md). Phase 4–9 (mọi tỉ số thời gian): [`docs/linux-phase4-9.md`](./docs/linux-phase4-9.md). Nợ của phase 9 (P9-1, và
