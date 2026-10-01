@@ -16,7 +16,7 @@ của phase 0. Bối cảnh đầy đủ nằm ở `diary/phase9.md`, bảng 8.
 ## Chuẩn bị ⏱ 10 phút
 
 ```bash
-git clone <repo> && cd db
+git clone https://github.com/ThaiG2Pro/mini-kv-db.git && cd mini-kv-db
 go version                                  # cần 1.26+
 docker compose version                      # cần compose v2
 docker ps                                   # chạy được mà không cần sudo (user nằm trong nhóm docker)

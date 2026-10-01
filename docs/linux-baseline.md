@@ -23,7 +23,7 @@ WSL2 làm được.
 ## Chuẩn bị (5 phút)
 
 ```bash
-git clone <repo> && cd db
+git clone https://github.com/ThaiG2Pro/mini-kv-db.git && cd mini-kv-db
 go version                       # cần 1.26+
 sudo apt install -y jq dmsetup   # jq để so JSON, dmsetup cho nợ #1
 ```
