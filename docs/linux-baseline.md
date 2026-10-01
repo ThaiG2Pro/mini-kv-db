@@ -13,6 +13,7 @@ Trả dần cũng được — thứ tự khuyến nghị: **#3 → #5 → #2 �
 |---|---|---|
 | P0-1…P0-5 | file này | `./scripts/linux-baseline.sh`, `./scripts/dm-flakey.sh` |
 | P1-6, P2-5, P3-5 | file này, mục cuối | `./scripts/linux-baseline.sh` (chạy chung) |
+| mọi tỉ số **thời gian** của phase 4–8, và bảng 1 + group commit của phase 9 | [`linux-phase4-9.md`](./linux-phase4-9.md) | `./scripts/linux-phase4-9.sh` |
 | P9-1 | [`linux-phase9.md`](./linux-phase9.md) | `./scripts/p91-seqscan.sh` |
 | P9-7 | [`linux-phase9.md`](./linux-phase9.md) | `./scripts/p97-hashjoin.sh` |
 
