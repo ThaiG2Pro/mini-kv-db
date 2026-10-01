@@ -67,7 +67,7 @@ func open(name string) (*Engine, error) {
 
 func main() {
 	var (
-		work   = flag.String("work", "all", "breakeven | anomaly | pkorder | bloat | stats | crash | lograte | hashjoin | all")
+		work   = flag.String("work", "all", "breakeven | anomaly | pkorder | bloat | stats | crash | lograte | hashjoin | purge | all")
 		dbs    = flag.String("db", "pg,mysql,maria", "danh sách DB, cách nhau bằng dấu phẩy")
 		rows   = flag.Int("rows", 1_000_000, "số hàng cho breakeven / stats")
 		repeat = flag.Int("repeat", 5, "số lần chạy mỗi truy vấn, lấy trung vị")
@@ -100,6 +100,7 @@ func main() {
 	run("stats", func() error { return workStats(es, *rows) })
 	run("crash", func() error { return workCrash(es, *rounds) })
 	run("lograte", func() error { return workLogRate(es) })
+	run("purge", func() error { return workPurge(es) })
 	run("hashjoin", func() error { return workHashJoin(es, *repeat) })
 	if bad {
 		os.Exit(1)

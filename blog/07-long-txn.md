@@ -65,6 +65,12 @@ Gom lại sau 10 vòng, tức 1 triệu phiên bản cũ:
 Cùng một phiên bị bỏ quên. Ở Postgres, **mọi người** cùng trả giá. Ở InnoDB, chỉ **chính phiên
 đó** trả giá.
 
+(Dòng cuối của bảng có một cái bẫy, mình chỉ phát hiện ra sau. "8s so với 200ms" đo lúc **bộ
+đếm** `History list length` về 0, không phải lúc việc dọn xong. MySQL đã dọn xong sau khoảng 2s,
+nhưng bộ đếm của nó chỉ rơi khi tới lượt cắt history, mỗi 128 lô purge, và lượt đó có khi tới sau
+cả phút. Đặt `innodb_purge_rseg_truncate_frequency = 1` thì MySQL về 0 trong dưới 100ms. MariaDB
+đã bỏ hẳn cơ chế này. Chi tiết: bảng 11 trong [`diary/phase9.md`](../diary/phase9.md).)
+
 ## Bên trong: một phiên cũ giữ lại cái gì?
 
 Bài 6 đã nói: mỗi transaction đọc một **bản chụp** của dữ liệu. Phiên bị bỏ quên chụp lúc 12 giờ

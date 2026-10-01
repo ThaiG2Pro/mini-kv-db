@@ -71,6 +71,7 @@ go run . -work bloat                   # bảng 4
 go run . -work stats                   # bảng 5
 go run . -work crash -rounds 5         # bảng 6, ~4 phút, giết và khởi động lại container
 go run . -work lograte -db mysql,maria # bảng 7, ~15 giây
+go run . -work purge -db mysql,maria   # bảng 11, ~6 phút
 go run . -work hashjoin -db pg,pgm -repeat 11   # bảng 8, ~6 phút, cần: docker compose --profile p97 up -d pgm
 ../scripts/p97-hashjoin.sh             # bảng 8 phép E, chỉ trên Linux thuần (cần PMU + perf + sudo)
 ../scripts/p91-seqscan.sh              # bảng 9, A/B 348f120 ↔ HEAD, ~15 phút, cần máy rảnh
@@ -633,7 +634,9 @@ sau          14.2             —        13.6           —             0      6
    là 155MB, và seq scan vẫn chậm 2.8x vì phải đọc qua các page trống. Muốn co lại phải dùng
    `VACUUM FULL`, tức viết lại cả bảng dưới khoá độc quyền. Trên production, đó là downtime.
 5. **Purge của MariaDB nhanh hơn MySQL 40 lần** (200ms so với 8s) trên cùng lượng việc. Đây là
-   một chỗ MariaDB đã sửa lại InnoDB từ 10.6 trở đi, chưa đào sâu (nợ P9-4).
+   một chỗ MariaDB đã sửa lại InnoDB từ 10.6 trở đi, chưa đào sâu (nợ P9-4). **Bảng 11: phần lớn
+   khoảng chênh là bộ đếm.** History list của MySQL chỉ rơi khi history được cắt (mỗi 128 lô purge),
+   còn việc dọn thật xong sau ~2s.
 
 **Đang nghĩ gì:** minidb đứng ở phía Postgres (mọi người đọc cùng trả giá) nhưng còn tệ hơn: nó
 không chỉ lưu version cũ cạnh bản mới, mà lưu cả chuỗi **trong cùng một record**. Lời giải của
@@ -1200,6 +1203,105 @@ tiên chạm vào nó. Phần còn lại của phí phình version là việc c�
 Test: `go test ./internal/{btree,db,txn,table,query}` xanh. `FuzzChainCodec` 45s sạch; nó đối chiếu
 `VisibleRaw` với `DecodeChain + Visible` và đã từng bắt được bản dừng sớm (bảng 9).
 
+### 2026-10-01 — bảng 11: trả nợ P9-4 — "purge nhanh hơn 40 lần" là bộ đếm, không phải purge
+
+Bảng 4 đo thời gian từ lúc phiên cũ commit tới lúc `History list length` về dưới 50: MySQL 8s,
+MariaDB 200ms. Nợ P9-4 hỏi vì sao. Cấu hình mặc định khác nhau ngay từ đầu:
+
+```console
+$ reallab/q.sh mysql <<< "SHOW GLOBAL VARIABLES LIKE 'innodb_purge%'"     # và tương tự cho maria
+                                       MySQL 8.4.11   MariaDB 11.8.9
+innodb_purge_threads                        1              4
+innodb_purge_batch_size                   300            127
+innodb_purge_rseg_truncate_frequency      128            128
+```
+
+**Kỳ vọng viết trước** (comment đầu `reallab/purge.go`):
+
+- H1, số luồng: MariaDB hạ về 1 luồng thì phải chậm đi khoảng 4 lần. Ngay cả khi đúng, 4 lần cũng
+  không đủ giải thích 40 lần.
+- H2, cỡ lô và nhịp ngủ: tăng `batch_size` thì MySQL phải nhanh lên rõ.
+- H3, bộ đếm nói dối (bài học bảng 7): đối chiếu với bộ đếm thứ hai, số undo page đã purge.
+
+Bài `reallab/purge.go` (`-work purge`) dùng cùng bảng với bảng 4, 5 vòng × 100 transaction × 1000
+hàng. Sau khi phiên cũ commit, nó lấy mẫu `INNODB_METRICS` mỗi 20ms, và mỗi chế độ chỉ vặn đúng một
+núm. Lượt đầu:
+
+```console
+$ go run . -work purge -db mysql,maria
+db      chế độ                              đầu    t 50%    t 90%    t xong     txn/s   undo page   lần gọi
+mysql   mặc định (1 luồng, lô 300)          502  48032.5  48886.8   48886.8        10         503        58
+mysql   lô 5000                             504 104675.5 104675.5  104675.5         5         505       114
+maria   mặc định (4 luồng, lô 127)          500    697.1    740.6     740.6       675        1892        16
+maria   1 luồng                             501    601.3    669.4     669.4       748        1890        16
+maria   1 luồng, lô 300 (như MySQL)         501   1008.8   1074.3    1074.3       466        1879         8
+```
+
+H1 sai: MariaDB chạy 1 luồng không chậm đi. H2 sai theo chiều ngược: lô 5000 làm MySQL **chậm hơn**.
+Điều lạ nằm ở hình dạng: ở MySQL, `t 50%` ≈ `t 90%` ≈ `t xong`. History list không đi xuống dần
+mà **đứng yên 48 giây rồi rơi một lần**.
+
+**H4, thêm sau lượt đầu:** history list của MySQL chỉ giảm khi history được **cắt** khỏi rollback
+segment, và việc cắt chỉ chạy mỗi `innodb_purge_rseg_truncate_frequency` = 128 lô purge. Nếu đúng
+thì (a) việc dọn thật (số undo page) phải xong sớm hơn nhiều so với lúc bộ đếm rơi, và (b) đặt
+biến đó về 1 thì MySQL phải xong gần như ngay. Thêm chế độ đó và cột "page ngừng" (lần cuối
+`purge_undo_log_pages` còn tăng), rồi chạy hai lượt:
+
+```console
+db      chế độ                                         đầu     t 50%     t 90%    t xong  page ngừng  undo page  lần gọi
+mysql   mặc định (1 luồng, lô 300)                     503   84955.8   84955.8   84955.8      2260.6        504       94
+mysql   lô 5000                                        502  112578.1  112578.1  112578.1      9205.4        503      121
+mysql   cắt history mỗi lô (truncate_frequency=1)      500      44.1      44.1      44.1        44.1        500        2
+maria   mặc định (4 luồng, lô 127)                     500     194.3     237.9     237.9       237.9       1890       16
+maria   1 luồng                                        500     811.0     832.4     832.4       832.4       1890       16
+maria   1 luồng, lô 300 (như MySQL)                    500    1049.4    1092.4    1092.4      1092.4       1876        8
+maria   truncate_frequency=1                           500     853.5     875.0     875.0       875.0       1891       16
+
+mysql   mặc định (1 luồng, lô 300)                     500   11247.8   11247.8   11247.8      1849.7        501       21
+mysql   lô 5000                                        500   67683.4   67683.4   67683.4      1740.8        501       76
+mysql   cắt history mỗi lô (truncate_frequency=1)      502      98.0      98.0      98.0        98.0        502        2
+maria   mặc định (4 luồng, lô 127)                     500     187.6     241.3     241.3       241.3       1891       16
+maria   1 luồng                                        500      66.3      87.8      87.8        87.8       1891       16
+maria   1 luồng, lô 300 (như MySQL)                    500     732.7     797.5     797.5       797.5       1876        8
+maria   truncate_frequency=1                           500     255.9     277.3     277.3       277.3       1890       16
+```
+
+Và MariaDB tự mô tả biến này:
+
+```console
+$ reallab/q.sh maria <<< "SELECT VARIABLE_COMMENT FROM information_schema.SYSTEM_VARIABLES
+                          WHERE VARIABLE_NAME = 'INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY'"
+VARIABLE_COMMENT: Unused
+```
+
+**Đọc kết quả:**
+
+| | MySQL mặc định | MySQL, cắt mỗi lô | MariaDB (mọi chế độ) |
+|---|---|---|---|
+| việc dọn thật xong ("page ngừng") | **1.7–2.3s** | 44–98ms | 88ms–1.1s |
+| history list về 0 ("t xong") | **11–85s**, rơi một lần | 44–98ms | 88ms–1.1s, đi xuống dần |
+
+1. **H4 đúng, và nó gần như là toàn bộ câu trả lời.** Ở MySQL, history list đứng yên sau khi việc
+   dọn thật đã xong, và chỉ rơi khi tới lượt cắt (mỗi 128 lô). Đủ 128 lô mất 11 tới 85 giây, và
+   con số đó nhảy lung tung giữa các lượt. Giải thích khớp với số (chưa đọc mã nguồn để kiểm):
+   lúc hết việc, coordinator của purge ngủ giữa các lần gọi, nên lô đến chậm.
+   Đặt `truncate_frequency=1` thì MySQL xong trong 44–98ms, **nhanh hơn cả MariaDB**.
+2. **Vì sao lô 5000 làm MySQL chậm hơn** (cùng giải thích, cũng chưa kiểm bằng mã nguồn): lô to
+   thì hết việc sớm hơn, các lô sau rỗng, coordinator ngủ lâu hơn giữa các lần gọi, nên đếm đủ
+   128 lô lại càng lâu (68–113s).
+3. **MariaDB đã bỏ hẳn cơ chế này.** Biến vẫn còn nhưng ghi là `Unused`, và vặn nó không đổi được
+   gì. History list của MariaDB đi xuống dần, theo đúng việc đã dọn.
+4. **Việc dọn thật vẫn có chênh**, nhưng nhỏ hơn nhiều: MySQL mặc định 1.7–2.3s, MariaDB
+   0.09–1.1s (dao động lớn, và không đi theo số luồng). Khoảng 2–20 lần chứ không phải 40.
+5. Hai DB đếm undo page khác nhau cho cùng một việc (khoảng 500 so với 1890). Đừng so bộ đếm đó
+   giữa hai DB, chỉ so trong cùng một DB.
+
+**Hệ quả cho người vận hành MySQL:** `History list length` (thứ mà mọi dashboard InnoDB vẽ) có thể
+đứng ở mức cao **hàng chục giây sau khi purge đã dọn xong**. Thấy nó cao ngay sau khi một
+transaction dài vừa kết thúc chưa phải là dấu hiệu purge đang tụt lại. Chỉ là dấu hiệu khi nó
+không rơi trong vài phút. (Theo thiết kế của InnoDB, undo log chưa cắt thì chưa được tái dùng,
+nên trong lúc đó vẫn tốn chỗ. Phần này chưa đo.)
+
 ### 2026-09-29 — các thí nghiệm nhỏ cho blog (bài 1, 2, 3, 5, 8, 10)
 
 Mỗi bài blog có một script trong `blog/lab/`. Output đầy đủ nằm ngay trong bài; ở đây chỉ ghi các
@@ -1257,6 +1359,8 @@ Ba chỗ đo sai hoặc bất ngờ:
 | Postgres nhanh lên khi tràn đĩa là do page fault: glibc trả bộ nhớ bảng băm cho OS sau mỗi câu | Page fault có thật (4000 lần mỗi câu) nhưng chỉ chiếm ~20ms. Khoảng chênh tăng tuyến tính theo số hàng probe, và vẫn còn khi malloc giữ bộ nhớ | `go run . -work hashjoin -db pg,pgm`: B trên pgm, fault 3, chênh vẫn 78 → 332ms; C: pg − pgm = 23ms | Giữ H1 (cache); đếm trực tiếp chờ `scripts/p97-hashjoin.sh` |
 | *(P6-2)* `newest` ≈ `oldest` ở depth=60 nghĩa là chi phí nằm ở việc `DecodeChain` dựng cả chuỗi | Bỏ hẳn việc dựng `Chain` (`VisibleRaw`) mà depth=60 vẫn `newest` ≈ `oldest`: chi phí theo độ sâu nằm ở chỗ khác, nghi `db.Get` chép cả chuỗi. Bảng 10: đúng một phần. `btree.Get` cấp phát + chép (43%) **và** dựng `Version` cho từng bản (56%), cả hai chung cho hai nhánh | `go test ./internal/txn -bench GetChainDepth`: 2125–2211 so với 2355–2640ns; profile ở bảng 10 | `GetFunc` + `chainReader.head`; depth=60 5213 → 708ns |
 | *(phase 6)* Giải mã lười sẽ cứu nhánh `newest`, còn `oldest` giữ nguyên | Cả hai cùng nhanh lên 5–7 lần: chi phí chưa bao giờ nằm ở giải mã hay vòng visibility, mà ở việc chép cả chuỗi và dựng struct cho từng bản | 10 cặp A/B: `newest` 0.14x, `oldest` 0.18x so với 348f120 | Trả P6-2 (bảng 10) |
+| Purge của MariaDB nhanh hơn MySQL 40 lần | Việc dọn thật chỉ chênh 2–20 lần. Phần lớn khoảng chênh là **bộ đếm**: history list của MySQL đứng yên cho tới lượt cắt, mỗi 128 lô purge | `go run . -work purge`: MySQL "page ngừng" 1.7–2.3s nhưng "t xong" 11–85s; `truncate_frequency=1` → 44–98ms | Trả P9-4 (bảng 11); sửa bài 7 |
+| Tăng `innodb_purge_batch_size` thì purge của MySQL nhanh hơn | Chậm hơn (68–113s): lô to hết việc sớm, các lô rỗng sau đó ngủ lâu, đếm đủ 128 lô càng lâu | cùng lệnh, chế độ "lô 5000" | — |
 | `glibc.malloc.mmap_threshold=1GB` tắt được `mmap` cho khối lớn | Trần là 32MB; giá trị lớn hơn bị bỏ qua mà không báo gì | `rl-pgm` vẫn 4000 fault / câu cho tới khi đặt `33554432` | Ghi trần vào comment của `docker-compose.yml` |
 
 ---
@@ -1338,7 +1442,7 @@ lệch.
 - [ ] 📏 P9-1 · Đo thẳng phí quét một hàng của minidb, tách phần `keys.Decode` (P7-1) khỏi `DecodeChain` (P6-2). **Bảng 9, lượt 1:** đã tách (54% so với 7%), đã sửa (7 → 2 lần cấp phát mỗi hàng). Thời gian và điểm hoà vốn < 15% chờ đo lại: `./scripts/p91-seqscan.sh` trên Linux thuần
 - [ ] ⏳ P9-2 · `txnlab` chưa có ô "RR kiểu MySQL" (đọc snapshot, ghi trên bản mới nhất)
 - [ ] 📏 P9-3 · Chưa đo UUID trên Postgres khi riêng index PK lớn hơn RAM (cần giới hạn cả page cache: `docker --memory`)
-- [ ] 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x trên cùng lượng việc: chưa biết vì sao
+- [x] 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x: **trả ở bảng 11**. History list của MySQL chỉ rơi khi tới lượt cắt (`innodb_purge_rseg_truncate_frequency=128`); đặt về 1 thì MySQL xong trong 44–98ms. MariaDB ghi biến đó là `Unused`
 - [ ] 🔧 P9-5 · Cột `ms` của bảng 5 là một lần `EXPLAIN ANALYZE`, không làm nóng, không lấy trung vị
 - [x] 📏 P9-6 · MySQL `flush_log_at_trx_commit=0` + `sync_binlog=0` chỉ mất 6 commit khi `kill -9`, MariaDB mất 9123: **trả ở bảng 7**, do luồng `log_writer` (tắt nó thì mất 3447)
 - [ ] 📏 P9-7 · Hash join 16 batch nhanh hơn 1 batch 1.2–1.3x trên Postgres. **Bảng 8, trả một nửa:** page fault chỉ ~20ms; phần chính là 67–98ns mỗi hàng probe, khớp độ trễ một lần trượt xuống RAM (đo gián tiếp). Còn đếm cache/TLB miss trực tiếp: `./scripts/p97-hashjoin.sh` trên Linux thuần

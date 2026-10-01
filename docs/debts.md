@@ -771,12 +771,6 @@ mức `RepeatableReadCurrentWrite` sẽ tái tạo được ô đó bằng chín
 `shared_buffers` nhỏ, hoặc tăng số hàng tới khi index > RAM. **Kỳ vọng viết trước:** tỉ số ghi
 page tiến về phía InnoDB.
 
-### 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x
-
-`reallab -work bloat`: sau khi phiên cũ đóng, MySQL mất 8s để history list về 0, MariaDB mất 200ms,
-cùng 1000 transaction × 1000 hàng. Chưa biết do số luồng purge, do cách MariaDB viết lại purge
-từ 10.6, hay do cách đo (vòng chờ 100ms).
-
 ### 🔧 P9-5 · Cột `ms` của `reallab -work stats` là một lần chạy
 
 Không làm nóng, không lấy trung vị: chỉ dùng được để xem thứ tự độ lớn. **Trả bằng:** gọi
@@ -811,6 +805,7 @@ instructions/cycles). Sau đó mới xem minidb có hưởng được điều n�
 | 📏 P0-5 · `fadvise` có thật sự đẩy cache ra? | cờ `-verify-cache` dùng `mincore(2)` | `residency 100.0% -> 0.0%` |
 | 🔧 P1-4 · `WriteAt` trả `n < len(p)` mà `err == nil` | `writeFull()` trong `pager.go` | `TestShortWriteIsAnError` — trước khi sửa: *"Commit báo THÀNH CÔNG dù lời ghi chỉ đi được 4095/4096 byte"* |
 | 🔧 P1-5 · Không có cách kiểm tra file từ bên ngoài | `pager.Verify()` + `cmd/dbcheck` | Bắt được: double free, freelist tự trỏ vào chính nó, meta page bị liệt kê là rỗng, chuỗi có vòng lặp, file cắt giữa page, rò rỉ đuôi file |
+| 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x | `reallab -work purge`: lấy mẫu `INNODB_METRICS` mỗi 20ms, mỗi chế độ vặn một núm, đối chiếu history list với số undo page đã purge | History list của MySQL chỉ rơi khi history được cắt, mỗi `innodb_purge_rseg_truncate_frequency`=128 lô: việc dọn xong sau 1.7–2.3s mà bộ đếm đứng tới 11–85s. Đặt về 1 → **44–98ms**. MariaDB ghi biến đó là `Unused`. Số luồng (H1) và cỡ lô (H2) đều không phải nguyên nhân. diary/phase9.md bảng 11 |
 | 🔧 P6-2 · `DecodeChain` giải mã trọn chuỗi dù chỉ cần một version | `btree.GetFunc` (đọc chuỗi ngay trong page, chỉ chép bản nhìn thấy được) + `chainReader.head` (không dựng `Version` cho bản bị bỏ qua); vẫn kiểm hết đuôi chuỗi | 10 cặp A/B so với 348f120: depth=60 `newest` 5213 → **708ns** (0.14x), `oldest` 3878 → 714ns, 897 → 4 B/op. Kỳ vọng cũ ("chỉ `newest` giảm") **sai**: cả hai giảm, vì chi phí là chép và dựng struct chứ không phải giải mã. diary/phase9.md bảng 10 |
 | 🔧 P2-0 · `Compact` dùng insertion sort, giả định offset đã gần sắp xếp | `slices.SortFunc` trên mảng nằm trên stack | `TestCompactOrderIsScrambled` dựng được thế 299/300 nghịch thế; `BenchmarkCompactScrambled` 229810 → 9169 ns/op = **25x**, 0 alloc |
 | 🔧 P2-0b · `Verify` cấp phát 20KB mỗi lần gọi, bóp nghẹt fuzz | bitmap 512 byte trên stack; giữ bản cũ làm `verifyRef` để kiểm tra chéo | `BenchmarkVerifyRefFullPage` 19768 ns / 20576 B vs `BenchmarkVerifyFullPage` 3583 ns / **0 B**; fuzz đi từ 63k lên **1 421 899** exec |
