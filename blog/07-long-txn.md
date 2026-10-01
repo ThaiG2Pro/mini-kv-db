@@ -145,7 +145,8 @@ lại cả bảng, dưới một khoá **chặn mọi đọc và ghi** trong su�
 trăm GB, đó là downtime. Công cụ `pg_repack` làm việc tương tự mà không giữ khoá lâu như vậy.
 
 minidb thì đứng về phía Postgres, và còn tệ hơn: nó giữ cả chuỗi phiên bản **trong cùng một
-record**, nên ai đọc cũng phải giải mã cả chuỗi. Phase 6 đo được bảng phình 18 lần vì một reader
+record**, nên ai đọc cũng phải trả giá cho cả chuỗi. (Lúc đầu mình tưởng cái giá đó nằm ở bước
+giải mã. Profile nói khác: [bài 13](13-cho-cham-khong-o-cho-doan.md).) Phase 6 đo được bảng phình 18 lần vì một reader
 còn mở. Cách InnoDB làm (bản mới tại chỗ, bản cũ ra undo, chỉ ghi phần thay đổi) chính là cách
 minidb cần học để trả món nợ đó.
 

@@ -190,3 +190,30 @@ func BenchmarkGetPool512(b *testing.B)  { benchGet(b, true, 512) }
 func BenchmarkGetPool2048(b *testing.B) { benchGet(b, true, 2048) }
 func BenchmarkGetPool4096(b *testing.B) { benchGet(b, true, 4096) }
 func BenchmarkGetPool8192(b *testing.B) { benchGet(b, true, 8192) }
+
+// BenchmarkCopyVsAlloc tách hai thứ mà profiler gộp làm một (nợ P6-2, blog bài
+// 13): Get cũ cấp phát rồi chép cả chuỗi version (~900 byte), và pprof tính
+// hết vào runtime.memmove vì memmove là người đầu tiên chạm vào vùng nhớ mới.
+// Đo trên máy đo: alloc+copy 890–1865 ns, chỉ copy 18–27 ns. Cái đắt là lần
+// cấp phát, không phải phép chép — lý do GetFunc tồn tại.
+var copySink []byte
+
+func BenchmarkCopyVsAlloc(b *testing.B) {
+	src := make([]byte, 4096) // một page
+	b.Run("alloc+copy", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			out := make([]byte, 897)
+			copy(out, src[1000:1897])
+			copySink = out
+		}
+	})
+	b.Run("copy", func(b *testing.B) {
+		out := make([]byte, 897)
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			copy(out, src[1000:1897])
+		}
+		copySink = out
+	})
+}

@@ -18,7 +18,7 @@ Mỗi bài có bốn phần, luôn theo thứ tự này:
 Muốn chạy thí nghiệm thì chỉ cần Docker:
 
 ```bash
-git clone <repo> && cd db
+git clone https://github.com/ThaiG2Pro/mini-kv-db.git && cd mini-kv-db
 docker compose -f reallab/docker-compose.yml up -d   # Postgres 17, MySQL 8.4, MariaDB 11.8
 reallab/q.sh pg <<< "select version();"
 ```
@@ -40,6 +40,7 @@ reallab/q.sh pg <<< "select version();"
 | 10 | [Đọc `EXPLAIN` như người viết ra nó](10-explain.md) | `Hash Join`, `Sort`, `Batches`, `external merge` nghĩa là gì? | `EXPLAIN` của minidb vs Postgres; `LIMIT 10` chênh 221x | 8 |
 | 11 | [Bản đồ mang theo](11-ban-do-mang-theo.md) | Tổng kết: một câu `UPDATE` đi qua những đâu | — | — |
 | 12 | [Cùng một biến, hai database, chênh nhau 575 lần](12-ai-goi-write.md) | `flush_log_at_trx_commit=0` thật ra mất bao nhiêu? | Đếm nhịp `write()` của redo mỗi 5ms; tắt `log_writer` của MySQL: mất 6 → 3447 | 5, 9 |
+| 13 | [Chỗ chậm không nằm ở chỗ bạn đoán](13-cho-cham-khong-o-cho-doan.md) | Tối ưu theo trực giác thì sai ở đâu? Đo thế nào trên một máy ồn? | Chuỗi 60 phiên bản: profile, chép vs cấp phát, A/B theo cặp: 5213 → 708ns | 6, 9 |
 
 Số đo trong các bài lấy từ [`diary/phase9.md`](../diary/phase9.md) và các script ở [`lab/`](lab/), nơi có lệnh và output gốc.
 Máy đo là một laptop chạy WSL2 (i5-1235U), nên số tuyệt đối không giống máy chủ thật. Chỉ tỉ số là đáng tin.
