@@ -73,6 +73,7 @@ go run . -work crash -rounds 5         # bảng 6, ~4 phút, giết và khởi �
 go run . -work lograte -db mysql,maria # bảng 7, ~15 giây
 go run . -work hashjoin -db pg,pgm -repeat 11   # bảng 8, ~6 phút, cần: docker compose --profile p97 up -d pgm
 ../scripts/p97-hashjoin.sh             # bảng 8 phép E, chỉ trên Linux thuần (cần PMU + perf + sudo)
+../scripts/p91-seqscan.sh              # bảng 9, A/B 348f120 ↔ HEAD, ~15 phút, cần máy rảnh
 for f in ../blog/lab/0[1235]*-pg.sql ../blog/lab/08-index-pg.sql ../blog/lab/10-explain-pg.sql; do ./q.sh pg $f; done
 docker compose down -v                 # dọn
 ```
@@ -1078,6 +1079,68 @@ chia theo hàng probe. Phần parse đã được thử bằng một `perf` gi�
 nào. **Dự báo cho máy đó:** nếu H1 đúng, cột 256MB phải có ≥ 1 lần LLC miss hoặc dTLB miss trên
 mỗi hàng probe, còn cột 1MB thì thấp hơn hẳn.
 
+### 2026-10-01 — bảng 9: nợ P9-1, lượt 1 — cấp phát giảm thật, thời gian chưa đo được
+
+Câu hỏi từ bảng 1: quét một hàng ở minidb tốn 480ns, Postgres 31ns. Nợ ghi hai nghi phạm:
+`keys.Decode` (P7-1) và `DecodeChain` (P6-2). **Kỳ vọng viết trước:** phần lớn nằm ở `keys.Decode`,
+vì nó cấp phát cho mỗi cột bytes của mỗi hàng.
+
+Profile CPU, chỉ lấy phần dưới `RowIter.Next` (không tính bước dựng dữ liệu):
+
+```console
+$ go test ./internal/query/ -run '^$' -bench SeqStep -benchtime=300x -benchmem -cpuprofile seq.prof
+BenchmarkSeqStep-6   	     300	  16400680 ns/op	     20000 rows	 7041248 B/op	  140021 allocs/op
+$ go tool pprof -top -cum -focus 'ScanRows' query.test seq.prof
+     4.91s  table.(*RowIter).Next
+     2.67s  keys.Decode               ← 54%
+     2.20s  txn.(*Iter).Next
+     1.47s    db.(*Iter).Next         (con trỏ B+Tree, pin/unpin)
+     0.36s    txn.DecodeChain         ← 7%
+     1.44s  runtime.mallocgc
+```
+
+Kỳ vọng đúng về thứ tự: `keys.Decode` 54%, `DecodeChain` 7%. Mỗi hàng 7 lần cấp phát, 352 B.
+Thân của cột bytes được dựng bằng `append` từng byte từ `[]byte{}`, nên một cột 40 byte tốn 4 lần
+cấp phát (8, 16, 32, 48).
+
+**Sửa (commit e48552f):**
+1. `keys`: đi một lượt trước để biết độ dài thật rồi mới chép, một lần, đúng cỡ. `DecodeAppend`
+   chép mọi cột bytes của một hàng vào chung một arena.
+2. `table.RowIter`: mỗi hàng một mảng `Value` (cho cả pk lẫn hàng) và một arena. Hợp đồng "lần
+   `Next` sau không ghi đè hàng trước" giữ nguyên, vì hash join và sort dựa vào nó.
+   `TestRowsSurviveNext` giữ hợp đồng đó; đã thấy nó đỏ khi cố ý dùng lại arena.
+3. `txn`: `VisibleRaw` đi thẳng trên byte của chuỗi version, không dựng `Chain`, nhưng vẫn kiểm
+   hết phần đuôi, để chuỗi hỏng không bị nuốt lặng lẽ. `FuzzChainCodec` đối chiếu nó với
+   `DecodeChain + Visible`, và bắt được bản cố ý dừng sớm sau 0.08s.
+
+Không làm: cho `ScanRows` dùng lại buffer (0 cấp phát). `query/run.go:181` giữ `mins[i] = v`, và
+`v.B` trỏ vào buffer của hàng: dùng lại buffer là min/max bị ghi đè mà không có gì báo. Muốn làm
+thì phải đổi hợp đồng và rà khoảng 30 chỗ gọi.
+
+**Số đo: cấp phát chắc chắn, thời gian thì thô.** Máy đang có `chroma-mcp` ăn 269% CPU và
+codegraph 100%, load 5–8 trên 6 nhân:
+
+| | trước (348f120) | sau (e48552f) | độ tin |
+|---|---|---|---|
+| allocs / 20000 hàng | 140021 | **40021** (7 → 2 mỗi hàng) | chắc chắn: đếm, không đo giờ |
+| B / 20000 hàng | 7.04 MB | 6.24 MB | chắc chắn |
+| `BenchmarkDecode` (khóa 3 cột) | 147–160 ns, 152 B | 127–138 ns, 146 B | vừa |
+| SeqStep, 16 cặp xen kẽ | trung vị 871 ns/hàng | 846 ns/hàng; tỉ số theo cặp **1.07** | **không kết luận được** |
+| `idxlab breakeven`, lượt 1 | CFetch/CSeq 5.2x, hoà vốn 17.5% / 29.3% | 7.0x, **13.2%** / 24.9% | thô |
+| `idxlab breakeven`, lượt 2 | 4.3x, 21.0% / 34.8% | 4.3x, 20.6% / 25.6% | thô |
+
+Hai lượt `breakeven` lệch nhau tới 8 điểm phần trăm, nên chưa nói được tiêu chí "< 15%" đã đạt.
+Số byte chỉ giảm 11%, mà công việc của GC tỉ lệ với số byte chứ không với số lần cấp phát: đó là
+một lý do để nghi rằng thời gian giảm ít hơn số cấp phát gợi ý.
+
+**P6-2 có thêm một dấu hiệu:** sau khi bỏ hẳn việc dựng `Chain`, `GetChainDepth` ở depth=60 vẫn
+cho `newest` ≈ `oldest` (2125–2211 so với 2355–2640ns, cùng một lượt chạy). Nếu chi phí nằm ở
+việc dựng `Chain` thì `newest` phải tụt về gần depth=1. Nó không tụt, vậy chi phí theo độ sâu
+nằm ở chỗ khác. Nghi phạm: `db.Get` chép cả chuỗi (60 version) ra một bản riêng trước khi
+`VisibleRaw` kịp đọc. Chưa đo.
+
+Đo lại trên Linux thuần: `./scripts/p91-seqscan.sh`, hướng dẫn ở `docs/linux-phase9.md`.
+
 ### 2026-09-29 — các thí nghiệm nhỏ cho blog (bài 1, 2, 3, 5, 8, 10)
 
 Mỗi bài blog có một script trong `blog/lab/`. Output đầy đủ nằm ngay trong bài; ở đây chỉ ghi các
@@ -1133,6 +1196,7 @@ Ba chỗ đo sai hoặc bất ngờ:
 | MySQL mất ít hơn MariaDB ở `=0` vì một cơ chế lạ nào đó của MySQL 8 | Chính là luồng `log_writer`: tắt nó (`innodb_log_writer_threads=OFF`) thì mất 689 mỗi lần kill thay vì 1.2 | `go run . -work crash -db mysql`: 6 so với 3447 commit mất / 5 vòng | Trả nợ P9-6; thêm chế độ vào `crash.go` |
 | Hash join tràn đĩa thì chậm hơn chạy trong RAM | Postgres: 16 batch **nhanh hơn** 1 batch 1.2–1.3x (268–291 vs 344–366ms) | `blog/lab/10-explain-pg.sql` mục 6, 3 lượt | Không sửa; ghi vào blog bài 10, nợ P9-7 |
 | Postgres nhanh lên khi tràn đĩa là do page fault: glibc trả bộ nhớ bảng băm cho OS sau mỗi câu | Page fault có thật (4000 lần mỗi câu) nhưng chỉ chiếm ~20ms. Khoảng chênh tăng tuyến tính theo số hàng probe, và vẫn còn khi malloc giữ bộ nhớ | `go run . -work hashjoin -db pg,pgm`: B trên pgm, fault 3, chênh vẫn 78 → 332ms; C: pg − pgm = 23ms | Giữ H1 (cache); đếm trực tiếp chờ `scripts/p97-hashjoin.sh` |
+| *(P6-2)* `newest` ≈ `oldest` ở depth=60 nghĩa là chi phí nằm ở việc `DecodeChain` dựng cả chuỗi | Bỏ hẳn việc dựng `Chain` (`VisibleRaw`) mà depth=60 vẫn `newest` ≈ `oldest`: chi phí theo độ sâu nằm ở chỗ khác, nghi `db.Get` chép cả chuỗi | `go test ./internal/txn -bench GetChainDepth -benchtime=200000x`: 2125–2211 so với 2355–2640ns (máy nhiễu) | Ghi vào P6-2; chưa sửa |
 | `glibc.malloc.mmap_threshold=1GB` tắt được `mmap` cho khối lớn | Trần là 32MB; giá trị lớn hơn bị bỏ qua mà không báo gì | `rl-pgm` vẫn 4000 fault / câu cho tới khi đặt `33554432` | Ghi trần vào comment của `docker-compose.yml` |
 
 ---
@@ -1210,7 +1274,7 @@ lệch.
 
 ## Nợ kỹ thuật
 
-- [ ] 📏 P9-1 · Đo thẳng phí quét một hàng của minidb, tách phần `keys.Decode` (P7-1) khỏi `DecodeChain` (P6-2)
+- [ ] 📏 P9-1 · Đo thẳng phí quét một hàng của minidb, tách phần `keys.Decode` (P7-1) khỏi `DecodeChain` (P6-2). **Bảng 9, lượt 1:** đã tách (54% so với 7%), đã sửa (7 → 2 lần cấp phát mỗi hàng). Thời gian và điểm hoà vốn < 15% chờ đo lại: `./scripts/p91-seqscan.sh` trên Linux thuần
 - [ ] ⏳ P9-2 · `txnlab` chưa có ô "RR kiểu MySQL" (đọc snapshot, ghi trên bản mới nhất)
 - [ ] 📏 P9-3 · Chưa đo UUID trên Postgres khi riêng index PK lớn hơn RAM (cần giới hạn cả page cache: `docker --memory`)
 - [ ] 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x trên cùng lượng việc: chưa biết vì sao

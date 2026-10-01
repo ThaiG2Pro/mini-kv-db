@@ -13,10 +13,11 @@ Trả dần cũng được — thứ tự khuyến nghị: **#3 → #5 → #2 �
 |---|---|---|
 | P0-1…P0-5 | file này | `./scripts/linux-baseline.sh`, `./scripts/dm-flakey.sh` |
 | P1-6, P2-5, P3-5 | file này, mục cuối | `./scripts/linux-baseline.sh` (chạy chung) |
+| P9-1 | [`linux-phase9.md`](./linux-phase9.md) | `./scripts/p91-seqscan.sh` |
 | P9-7 | [`linux-phase9.md`](./linux-phase9.md) | `./scripts/p97-hashjoin.sh` |
 
 Các món 📏 khác trong [`debts.md`](./debts.md) (P3-1, P4-3, P4-6, P4-7, P5-6, P6-6, P7-4, P7-5,
-P7-7, P9-1, P9-3, P9-4) **không** cần đổi máy: chúng cần viết thêm code hoặc chạy lâu hơn, và
+P7-7, P9-3, P9-4) **không** cần đổi máy: chúng cần viết thêm code hoặc chạy lâu hơn, và
 WSL2 làm được.
 
 ## Chuẩn bị (5 phút)

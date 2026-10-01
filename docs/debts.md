@@ -437,6 +437,11 @@ thật sự được trả về. Header cố định 11 byte nên bước nhảy
 **Kỳ vọng:** `newest` ở depth=60 tiến gần về `newest` ở depth=1 (~171ns); `oldest` giữ nguyên.
 Nếu **cả hai** đều giảm thì bench đang đo cái khác — nghi bench trước.
 
+**Đã làm ở P9-1, và giả thuyết của mục này không đứng được:** `VisibleRaw` đi trên byte, không
+dựng `Chain` (dùng cho `Txn.Get` và `Iter`). Vậy mà depth=60 vẫn cho `newest` ≈ `oldest`
+(2125–2211 so với 2355–2640ns, máy nhiễu). Chi phí theo độ sâu nằm ở chỗ khác. Nghi `db.Get` chép
+cả chuỗi ra một bản riêng. **Trả tiếp bằng:** profile `GetChainDepth/depth=60/newest`.
+
 ### 🔧 P6-3 · Lock manager không có chỉ mục theo đối tượng
 
 ```bash
@@ -515,6 +520,11 @@ go test ./internal/query/ -run '^$' -bench SeqStep -benchtime=30x -count=3
 
 **Cần nhìn:** `SeqStep` (413-544 ns/hàng hiện tại) giảm bao nhiêu. Nếu giảm < 10% thì `Decode`
 không phải chỗ nghẽn và **kết luận "không đáng làm" cũng là một cách trả** — nhưng phải có số.
+
+**Phần cấp phát đã sửa ở P9-1 (commit e48552f):** thân bytes được chép một lần, đúng cỡ;
+`DecodeAppend` cho cả hàng dùng chung một arena. `BenchmarkDecode` vẫn 2 lần cấp phát (mảng `Value`
+và thân bytes), nhưng không còn chuỗi `growslice`. Mục tiêu 0 lần cấp phát chỉ đạt được nếu người
+gọi được phép dùng lại buffer, mà điều đó đòi đổi hợp đồng của `RowIter` (xem P9-1).
 
 ### ⏳ P7-2 · `CreateIndex` back-fill trong MỘT transaction
 
@@ -761,6 +771,12 @@ Phí **tra** của minidb ngang InnoDB, phí **quét** thì đắt gấp 4x Inno
 do thật của điểm hoà vốn 36.8% (không phải "không có I/O" như phase 7 viết). **Trả bằng:** một
 bench quét của `internal/txn` tách hai phần `keys.Decode` (P7-1) và `DecodeChain` (P6-2), rồi sửa
 phần lớn hơn. **Bằng chứng phải có:** `idxlab -work breakeven` cho điểm hoà vốn tụt về dưới 15%.
+
+**Lượt 1 (2026-10-01, diary/phase9.md bảng 9):** đã tách được: `keys.Decode` chiếm 54%,
+`DecodeChain` 7%. Đã sửa cả hai phần cấp phát (commit e48552f): **7 → 2 lần cấp phát mỗi hàng**.
+Thời gian và điểm hoà vốn thì chưa chứng minh được: WSL2 hôm đó dao động ±40%, 16 cặp chạy xen kẽ
+ra tỉ số 1.07, hai lượt `breakeven` ra 13.2% và 20.6%. **Còn lại, trả trên Linux thuần**
+(⏱ ~15 phút, máy rảnh): `./scripts/p91-seqscan.sh`, hướng dẫn ở [`linux-phase9.md`](./linux-phase9.md).
 
 ### ⏳ P9-2 · `txnlab` chưa có ô "RR kiểu MySQL"
 

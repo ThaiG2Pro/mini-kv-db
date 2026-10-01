@@ -1,8 +1,14 @@
 # Trả nợ Phase 9 trên máy Linux thuần
 
 Phase 9 đo trên WSL2. Hầu hết kết luận ở đó là **tỉ số** hoặc **đếm sự kiện** (commit mất, page
-ghi, hàng đọc), nên vẫn đứng được. Riêng một món cần phần cứng thật: **P9-7**, vì WSL2 không đưa
-bộ đếm hiệu năng của CPU (PMU) vào VM, nên `perf` không đếm được cache miss.
+ghi, hàng đọc), nên vẫn đứng được. Hai món cần máy thật:
+
+| Món | Vì sao WSL2 không đủ | Lệnh | ⏱ |
+|---|---|---|---|
+| **P9-1** | Phép đo thời gian; WSL2 dao động ±40% | `./scripts/p91-seqscan.sh` | ~15 phút |
+| **P9-7** | Cần đếm cache miss; WSL2 không có PMU | `./scripts/p97-hashjoin.sh` | ~10 phút, cần sudo |
+
+Làm P9-1 trước: nó không cần perf hay sudo.
 
 File này là **hướng dẫn trả từng bước**, cùng khuôn với [`linux-baseline.md`](./linux-baseline.md)
 của phase 0. Bối cảnh đầy đủ nằm ở `diary/phase9.md`, bảng 8.
@@ -39,6 +45,51 @@ sudo perf stat -e cycles,cache-misses,LLC-load-misses,dTLB-load-misses -- sleep 
 
 Quan trọng: **đo lúc máy rảnh**. Tắt trình duyệt và IDE, không để container nào khác chạy
 (`docker ps`). Trên laptop thì cắm sạc, vì chạy pin thì CPU hạ xung nhịp.
+
+## Nợ P9-1 — sửa giải mã hàng có làm seq scan nhanh lên thật không?  ⏱ 15 phút
+
+**Vì sao:** quét một hàng ở minidb tốn 480ns, ở Postgres 31ns, và chính phí quét đẩy điểm hoà vốn
+của minidb lên 22–37% thay vì 5–20%. Commit `e48552f` giảm cấp phát từ 7 xuống 2 lần mỗi hàng.
+Câu hỏi còn lại là thời gian có giảm theo không. Trên WSL2, 16 cặp chạy xen kẽ ra tỉ số 1.07:
+không phân biệt được với nhiễu.
+
+**Viết dự báo trước khi chạy:** `keys.Decode` chiếm 54% thời gian quét, và phần cấp phát trong đó
+đã giảm mạnh. Nếu cấp phát là phần đắt, tỉ số sau/trước phải nằm quanh 0.7–0.85. Nếu tỉ số ≈ 1.0
+thì cái đắt là phần giải mã, không phải cấp phát.
+
+**Chuẩn bị máy:** đóng mọi thứ ăn CPU. Script in 5 tiến trình đứng đầu vào `env.txt`; có tiến
+trình nào trên 20% thì tắt rồi chạy lại. Trên WSL2, đó là `chroma-mcp` và indexer của codegraph.
+
+**Chạy:**
+
+```bash
+./scripts/p91-seqscan.sh                 # so 348f120 (trước) với HEAD (sau), 16 cặp
+PAIRS=32 ./scripts/p91-seqscan.sh        # nếu khoảng tứ phân vị vẫn vắt qua 1.0
+```
+
+Script làm 4 việc:
+
+1. Chụp môi trường và các tiến trình đang ăn CPU vào `env.txt`.
+2. Dựng hai bản test binary từ hai commit, bằng `git worktree` tạm (tự dọn khi xong).
+3. Chạy `BenchmarkSeqStep` theo cặp, đổi thứ tự trong mỗi cặp, rồi in trung vị và khoảng tứ phân
+   vị của tỉ số **từng cặp**. Hai bản trong một cặp chịu cùng điều kiện máy, nên nhiễu chung bị
+   trừ đi.
+4. Chạy `idxlab -work breakeven` 3 lượt cho mỗi bản.
+
+Kết quả lưu ở `bench/p91/<host>-<ngày>/`: `env.txt`, `pairs.txt`, `summary.txt`, `breakeven-*.txt`.
+
+### Đọc kết quả
+
+| Thấy gì | Kết luận | Ghi vào diary |
+|---|---|---|
+| Khoảng tứ phân vị của tỉ số nằm trọn dưới 1.0, và hoà vốn (khoá nhảy) của bản sau < 15% ở cả 3 lượt | **Trả xong P9-1** | Tick P9-1, chuyển sang "Đã trả" |
+| Tỉ số dưới 1.0, nhưng hoà vốn vẫn ≥ 15% | Sửa có tác dụng nhưng chưa đủ. Phần lớn còn lại là con trỏ B+Tree (`db.Iter.Next`, 30% trong profile, nợ P4-3) | Mở lượt 2: profile lại và nhắm P4-3 |
+| Khoảng tứ phân vị vắt qua 1.0 | Cấp phát không phải phần đắt; cái đắt là việc giải mã | Một dòng "giả thuyết sai"; lượt 2 nhắm thẳng phần giải mã |
+| Cột `allocs` của bản sau khác 40021 | Script đang so nhầm commit | Kiểm `BEFORE`/`AFTER` trong `env.txt` |
+
+So thêm với Postgres: bảng 1 (`reallab -work breakeven`) cho Postgres 31 ns/hàng trên WSL2. Muốn
+so công bằng thì chạy lại bảng 1 trên cùng máy Linux:
+`cd reallab && docker compose up -d pg && go run . -work breakeven -db pg -repeat 9`.
 
 ---
 
