@@ -8,6 +8,8 @@
 > để học **DB internals** theo cách duy nhất tôi tin: mỗi phase phải kết thúc bằng
 > **một crash-test hoặc một benchmark** chứng minh mình hiểu, không phải bằng "code chạy được".
 
+![EXPLAIN trong REPL](./docs/img/explain.gif)
+
 ```sql
 minidb> EXPLAIN SELECT ev.city, dim.name FROM ev JOIN dim ON ev.kind = dim.kind
         WHERE dim.kind < 5 ORDER BY ev.city;
