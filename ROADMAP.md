@@ -6,7 +6,7 @@
 **Nguyên tắc xuyên suốt:** mỗi phase kết thúc bằng **một crash-test hoặc một benchmark**
 chứng minh bạn hiểu — không phải bằng "code chạy được".
 
-Môi trường: Go 1.26.2, Linux (WSL2).
+Môi trường: Go 1.26.2, Linux. Phát triển trên WSL2, số đo chốt trên Linux thuần (xem `docs/linux-runbook.md`).
 
 ---
 

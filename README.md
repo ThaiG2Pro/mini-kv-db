@@ -1,5 +1,7 @@
 # minidb — tự viết một database để hiểu database thật
 
+[![ci](https://github.com/ThaiG2Pro/mini-kv-db/actions/workflows/ci.yml/badge.svg)](https://github.com/ThaiG2Pro/mini-kv-db/actions/workflows/ci.yml) ![Go](https://img.shields.io/badge/Go-1.26-00ADD8) ![license](https://img.shields.io/badge/license-MIT-green)
+
 > Một relational database mini bằng Go, viết từ `pread`/`fsync` lên tới `EXPLAIN`,
 > để học **DB internals** theo cách duy nhất tôi tin: mỗi phase phải kết thúc bằng
 > **một crash-test hoặc một benchmark** chứng minh mình hiểu, không phải bằng "code chạy được".
