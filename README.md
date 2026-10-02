@@ -1,5 +1,7 @@
 # minidb — tự viết một database để hiểu database thật
 
+**English:** [README.en.md](./README.en.md)
+
 [![ci](https://github.com/ThaiG2Pro/mini-kv-db/actions/workflows/ci.yml/badge.svg)](https://github.com/ThaiG2Pro/mini-kv-db/actions/workflows/ci.yml) ![Go](https://img.shields.io/badge/Go-1.26-00ADD8) ![license](https://img.shields.io/badge/license-MIT-green)
 
 > Một relational database mini bằng Go, viết từ `pread`/`fsync` lên tới `EXPLAIN`,
