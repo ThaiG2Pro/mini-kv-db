@@ -23,7 +23,7 @@ physical:          Sort budget=4096 hàng                                       
 ```
 
 Không dùng thư viện DB nào. Chỉ Go stdlib + syscall. **~32k dòng Go, 191 test, 11 fuzz target,
-10 phase, 13 bài blog, 39 commit trong một tháng** (09/2026).
+10 phase, 13 bài blog, 48 commit** (01/09 → 02/10/2026).
 
 ---
 
@@ -72,7 +72,7 @@ Phần tôi tự hào nhất không phải code chạy, mà là **chuỗi giả 
 
 Toàn bộ ở [`diary/`](./diary) (một file `phaseN.md` chốt + một `phaseN-log.md` ghi theo giờ, cả giả
 thuyết sai) và [`docs/debts.md`](./docs/debts.md): **sổ nợ kỹ thuật**, mỗi món là một thứ tôi biết
-còn thiếu kèm **lệnh để trả nó**, 19 món đã trả, mỗi món còn lại đều có lệnh chạy.
+còn thiếu kèm **lệnh để trả nó**, 17 món đã trả, 57 món còn mở, mỗi món đều có lệnh chạy.
 
 ---
 

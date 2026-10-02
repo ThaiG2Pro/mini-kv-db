@@ -6,7 +6,7 @@ A mini relational database in Go, built from `pread`/`fsync` up to `EXPLAIN`, wi
 **every phase ends with a crash test or a benchmark that proves understanding**, not with "it runs".
 
 No database libraries. Go stdlib + syscalls only. ~32k lines of Go, 191 tests, 11 fuzz targets,
-10 phases, 13 blog posts, one month (Sept 2026).
+10 phases, 13 blog posts, 48 commits (Sept 1 → Oct 2, 2026).
 
 ## What I built, and how each layer is proven
 
@@ -38,7 +38,7 @@ No database libraries. Go stdlib + syscalls only. ~32k lines of Go, 191 tests, 1
    more pages on InnoDB but only **~1.3x** on Postgres (non-clustered heap). Same names, different semantics.
 
 Full record in [`diary/`](./diary) and [`docs/debts.md`](./docs/debts.md), a ledger of known gaps where every
-entry has the command to settle it. 19 settled so far.
+entry has the command to settle it. 17 settled, 57 open.
 
 ## Architecture
 
