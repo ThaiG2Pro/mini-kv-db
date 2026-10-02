@@ -48,10 +48,12 @@ Phần tôi tự hào nhất không phải code chạy, mà là **chuỗi giả 
    thật". Phase 9 chạy Postgres / MySQL / MariaDB **cũng trong RAM**, 1 triệu hàng, và vẫn hoà vốn ở
    **11.7 / 6.6 / 6.1%**. Giải thích sai. Nguyên nhân thật: phí *quét* mỗi hàng của minidb đắt hơn hẳn,
    trong khi phí *tra* ngang InnoDB (nợ P9-1).
-2. **Trả nợ P9-1** bằng profile: chỗ chậm không nằm ở copy byte (20 ns) mà ở **cấp phát** (~1000 ns,
-   60% là page fault do GC trả trang về OS). Thêm API zero-copy `GetFunc` và sửa đường đọc chuỗi version.
-   A/B 16 cặp trên Linux thuần: seq scan **404 → 357 ns/hàng**, allocs 140k → 40k, tỉ số theo cặp 0.87,
-   khoảng tứ phân vị [0.85, 0.90] nằm hẳn dưới 1.0. Riêng Get ở depth 60: 5520 → 828 ns (WSL2).
+2. **Trả nợ P9-1** bằng profile: chỗ chậm không nằm ở copy byte mà ở **cấp phát**. Trên Linux thuần,
+   cấp phát + chép 1 KB tốn 154–193 ns, chép không thôi 25 ns (~7x). Trên WSL2 khoảng cách là ~50x vì
+   page fault của GC, một đặc thù môi trường, không phải của minidb. Thêm API zero-copy `GetFunc` và sửa
+   đường đọc chuỗi version. A/B 16 cặp trên Linux thuần: seq scan **404 → 357 ns/hàng**, allocs
+   140k → 40k, tỉ số theo cặp 0.87, khoảng tứ phân vị [0.85, 0.90] nằm hẳn dưới 1.0. Hoà vốn 41% → 36.5%,
+   **chưa** xuống dưới 15% như mục tiêu: sửa đúng chỗ nhưng chưa đủ, phần còn lại là con trỏ B+Tree (P4-3).
 3. **Một luật optimizer còn thiếu.** Bảng pushdown ở phase 8 cho 1.18x, quá ít. Thiếu luật suy ra
    điều kiện qua equi-join. Thêm luật: **18x**. Lần đầu số đo tìm ra thứ *chưa có*, không phải thứ sai.
 4. **"MariaDB purge nhanh hơn MySQL 40 lần"** hoá ra là **bộ đếm**, không phải purge: MySQL chỉ giảm

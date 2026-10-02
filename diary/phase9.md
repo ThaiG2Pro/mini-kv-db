@@ -1302,6 +1302,94 @@ transaction dài vừa kết thúc chưa phải là dấu hiệu purge đang t�
 không rơi trong vài phút. (Theo thiết kế của InnoDB, undo log chưa cắt thì chưa được tái dùng,
 nên trong lúc đó vẫn tốn chỗ. Phần này chưa đo.)
 
+### 2026-10-01 — bảng 12: đo lại trên Linux thuần (`thai-computer`) — P9-1 lượt 2, và kiểm xem tỉ số nào của phase 4–9 đổi
+
+Máy khác hẳn mục Môi trường ở đầu file. Mọi số trong mục này đọc từ `bench/*/thai-computer-20261001/`,
+commit `16a36ed` (lượt 2 của P9-1 so với `348f120`).
+
+```console
+$ head -20 bench/p91/thai-computer-20261001/env.txt
+# ngày: 2026-10-01T23:31:44+07:00
+# host: thai-computer
+# before: 348f120  after: 16a36ed
+Linux 7.1.3-2-cachyos x86_64 GNU/Linux
+go version go1.26.2 linux/amd64
+Model name:   AMD Ryzen 7 H 255 w/ Radeon 780M Graphics   CPU(s): 16   L3: 16 MiB
+# governor
+powersave
+%CPU COMMAND
+29.6 agy
+28.1 mysqld
+24.1 mariadbd
+```
+
+Hai điều kiện không như hướng dẫn: governor `powersave`, và hai container DB còn ăn 24–28% CPU
+(hướng dẫn bảo tắt thứ gì trên 20%). Giữ nguyên kết quả, nhưng chỉ tin **tỉ số theo cặp**.
+
+**Kỳ vọng viết trước** (ở `docs/linux-phase9.md`, viết trước khi có máy): nếu cấp phát là phần đắt,
+tỉ số sau/trước nằm quanh **0.70–0.85**; nếu ≈ 1.0 thì cái đắt là giải mã. Và hoà vốn sau sửa phải
+**< 15%** mới tính là trả xong.
+
+```console
+$ ./scripts/p91-seqscan.sh                       # PAIRS=16
+$ cat bench/p91/thai-computer-20261001/summary.txt
+trước: trung vị 404 ns/hàng, min 402, allocs 140021
+sau:   trung vị 357 ns/hàng, min 348, allocs 40021
+tỉ số sau/trước theo cặp: trung vị 0.870, khoảng [0.846, 0.898]
+
+$ grep 'THỜI GIAN đổi vai' bench/p91/thai-computer-20261001/breakeven-*.txt
+breakeven-before.txt:  THỜI GIAN đổi vai ở 41.0%
+breakeven-before.txt:  THỜI GIAN đổi vai ở 40.7%
+breakeven-before.txt:  THỜI GIAN đổi vai ở 40.9%
+breakeven-after.txt:   THỜI GIAN đổi vai ở 36.5%
+breakeven-after.txt:   THỜI GIAN đổi vai ở 36.7%
+breakeven-after.txt:   THỜI GIAN đổi vai ở 36.5%
+```
+
+**Đọc kết quả:** tứ phân vị nằm trọn dưới 1.0, nên bản sửa nhanh hơn thật (WSL2 ra 1.07, không
+kết luận được). Nhưng 0.87 nằm **ngoài mép** dự báo 0.70–0.85: giảm 5 trong 7 lần cấp phát mỗi
+hàng chỉ mua được 13% thời gian. Hoà vốn 41% → 36.5%, còn xa 15%. Theo bảng đọc kết quả đã viết
+trước, đây là hàng 2: *sửa có tác dụng nhưng chưa đủ*. P9-1 **chưa trả xong**; lượt 3 nhắm con trỏ
+B+Tree (`db.Iter.Next`, P4-3).
+
+Vì sao cấp phát không đắt như WSL2 báo? Bench tách riêng:
+
+```console
+$ go test ./internal/btree -run '^$' -bench CopyVsAlloc -benchmem -count 5   # bench/phase4-9/.../p4-copyalloc.txt
+BenchmarkCopyVsAlloc/alloc+copy-16   153.6 … 192.6 ns/op   1024 B/op   1 allocs/op
+BenchmarkCopyVsAlloc/copy-16          24.2 …  27.1 ns/op      0 B/op   0 allocs/op
+```
+
+WSL2 (bảng 10) đo cấp phát ~1000 ns với 60% là page fault do GC trả trang về OS. Linux thuần:
+**154–193 ns**, gấp ~7x copy chứ không phải ~50x. Con số "1000 ns, 60% page fault" là **đặc thù
+WSL2**, không phải của minidb. Kết luận định tính (cấp phát ≫ chép) vẫn đứng; độ lớn thì không mang
+sang máy khác được, và nó giải thích vì sao P9-1 mua được ít hơn dự báo.
+
+Kiểm lại các tỉ số của phase 4–9 trên cùng máy (`./scripts/linux-phase4-9.sh`, output ở
+`bench/phase4-9/thai-computer-20261001/`):
+
+| Kết luận đã chốt (WSL2) | Linux thuần | Đổi? |
+|---|---|---|
+| B+Tree: chèn ngẫu nhiên / tăng dần = **33x** page write (phase 4) | 1.012 / 0.03069 = **33.0x** | không |
+| Hoà vốn minidb **36.8%** (phase 7) | **36.6%** | không |
+| CFetch/CSeq đo 5.7x, mô hình trong code đoán 20x (phase 7) | 5.7x / 3.7x, mô hình 20x | không |
+| Hoà vốn Postgres / MySQL / MariaDB **4.7 / 4.9 / 7.0%** (bảng 1) | **11.7 / 6.6 / 6.1%** | số đổi, kết luận không: vẫn trong 5–20% của sách, minidb vẫn gấp 3–6 lần |
+| Postgres planner chọn Bitmap Heap Scan quá lâu | giữ Bitmap tới 30%, seq đã thắng 1.40–1.67x từ 20% | không |
+| Hash join tràn đĩa: bậc thang, không phải dốc (phase 8) | dưới ngưỡng 2.43–2.52x, trên ngưỡng 1.00–1.04x | không |
+| External sort: qua ngưỡng 1.3–1.7x rồi phẳng tới hàng trăm run (phase 8) | 1.63–1.76x, phẳng từ 2 tới 40 run, 2.6x ở 313 run | không |
+| Nested loop vs hash join đổi vai ở W≈3 (phase 8) | 1.07x ở W=2, 9.56x ở W=5 | không |
+| Pushdown + luật suy ra qua equi-join **18.53x** (phase 8) | **17.98x** | không |
+| Postgres group commit: fsync phẳng, tps tăng theo client (blog 1) | fsync 5257 → ~7000 ổn định; tps 1051 → 45283 ở 64 client | không |
+| Cấp phát ~1000 ns, 60% page fault (bảng 10) | **154–193 ns**, không thấy dấu page fault | **đổi độ lớn**, xem trên |
+| P9-1: tỉ số sau/trước (bảng 9: 1.07, nhiễu) | **0.870 [0.846, 0.898]** | có kết luận: nhanh hơn thật, nhưng chưa đủ |
+
+Chưa đo trên máy này: bảng 8 phép E (P9-7, cần `perf` + PMU): không có `bench/p97/`.
+
+**Đang nghĩ gì:** không tỉ số nào đảo chiều, kể cả 33x và 36.6% trùng tới chữ số lẻ. Hai thứ
+WSL2 báo sai độ lớn đều liên quan tới **bộ nhớ ảo** (page fault của GC ở bảng 10, và hệ quả là
+P9-1 mua được ít hơn). Bài học cho sổ nợ: kết luận kiểu "X% thời gian là page fault" phải ghi rõ
+máy, vì nó là kết luận về kernel, không phải về code. Việc kế tiếp là lượt 3 của P9-1 nhắm P4-3.
+
 ### 2026-09-29 — các thí nghiệm nhỏ cho blog (bài 1, 2, 3, 5, 8, 10)
 
 Mỗi bài blog có một script trong `blog/lab/`. Output đầy đủ nằm ngay trong bài; ở đây chỉ ghi các
@@ -1362,6 +1450,8 @@ Ba chỗ đo sai hoặc bất ngờ:
 | Purge của MariaDB nhanh hơn MySQL 40 lần | Việc dọn thật chỉ chênh 2–20 lần. Phần lớn khoảng chênh là **bộ đếm**: history list của MySQL đứng yên cho tới lượt cắt, mỗi 128 lô purge | `go run . -work purge`: MySQL "page ngừng" 1.7–2.3s nhưng "t xong" 11–85s; `truncate_frequency=1` → 44–98ms | Trả P9-4 (bảng 11); sửa bài 7 |
 | Tăng `innodb_purge_batch_size` thì purge của MySQL nhanh hơn | Chậm hơn (68–113s): lô to hết việc sớm, các lô rỗng sau đó ngủ lâu, đếm đủ 128 lô càng lâu | cùng lệnh, chế độ "lô 5000" | — |
 | `glibc.malloc.mmap_threshold=1GB` tắt được `mmap` cho khối lớn | Trần là 32MB; giá trị lớn hơn bị bỏ qua mà không báo gì | `rl-pgm` vẫn 4000 fault / câu cho tới khi đặt `33554432` | Ghi trần vào comment của `docker-compose.yml` |
+| *(bảng 10, WSL2)* Cấp phát 897 B tốn ~1000 ns, 60% là page fault do GC trả trang về OS: đó là giá của cấp phát | Trên Linux thuần cấp phát + chép 1 KB chỉ 154–193 ns, gấp ~7x chép. Con số 1000 ns / 60% là của WSL2 (bộ nhớ ảo của VM), không phải của minidb | `go test ./internal/btree -bench CopyVsAlloc` trên `thai-computer`: `alloc+copy 153.6–192.6 ns`, `copy 24.2–27.1 ns` (bảng 12) | Sửa README; ghi quy tắc: kết luận về page fault phải kèm tên máy |
+| *(P9-1)* Bớt 5/7 lần cấp phát mỗi hàng thì seq scan nhanh lên 0.70–0.85x | 0.870 [0.846, 0.898]: nhanh hơn thật nhưng ít hơn dự báo; hoà vốn 41 → 36.5%, chưa tới 15% | `./scripts/p91-seqscan.sh` trên Linux thuần (bảng 12) | P9-1 vẫn mở; lượt 3 nhắm `db.Iter.Next` (P4-3) |
 
 ---
 
@@ -1369,6 +1459,9 @@ Ba chỗ đo sai hoặc bất ngờ:
 
 Tất cả đo ngày 2026-09-29, trên máy ở mục Môi trường, tại commit của phase này. Lệnh ở từng mục
 nhật ký bên trên.
+
+Đo lại ngày 2026-10-01 trên Linux thuần (`thai-computer`, bảng 12): hoà vốn **36.6 / 11.7 / 6.6 / 6.1%**
+(minidb / Postgres / MySQL / MariaDB), các tỉ số khác của phase 4–9 không đổi; bảng so sánh đầy đủ ở bảng 12.
 
 | Câu hỏi | minidb | Postgres 17 | MySQL 8.4 | MariaDB 11.8 |
 |---|---|---|---|---|
@@ -1439,7 +1532,7 @@ lệch.
 ## Nợ kỹ thuật
 
 - [x] 🔧 P6-2 (của phase 6) · chuỗi version: **trả ở bảng 10**, depth=60 5213 → 708ns, 897 → 4 B/op
-- [ ] 📏 P9-1 · Đo thẳng phí quét một hàng của minidb, tách phần `keys.Decode` (P7-1) khỏi `DecodeChain` (P6-2). **Bảng 9, lượt 1:** đã tách (54% so với 7%), đã sửa (7 → 2 lần cấp phát mỗi hàng). Thời gian và điểm hoà vốn < 15% chờ đo lại: `./scripts/p91-seqscan.sh` trên Linux thuần
+- [ ] 📏 P9-1 · Đo thẳng phí quét một hàng của minidb, tách phần `keys.Decode` (P7-1) khỏi `DecodeChain` (P6-2). **Bảng 9, lượt 1:** đã tách (54% so với 7%), đã sửa (7 → 2 lần cấp phát mỗi hàng). **Bảng 12, lượt 2 trên Linux thuần:** tỉ số 0.870 [0.846, 0.898], hoà vốn 41 → 36.5%: nhanh hơn thật nhưng chưa tới 15%. **Lượt 3:** nhắm `db.Iter.Next` (P4-3) rồi chạy lại `./scripts/p91-seqscan.sh`
 - [ ] ⏳ P9-2 · `txnlab` chưa có ô "RR kiểu MySQL" (đọc snapshot, ghi trên bản mới nhất)
 - [ ] 📏 P9-3 · Chưa đo UUID trên Postgres khi riêng index PK lớn hơn RAM (cần giới hạn cả page cache: `docker --memory`)
 - [x] 📏 P9-4 · Purge của MariaDB nhanh hơn MySQL 40x: **trả ở bảng 11**. History list của MySQL chỉ rơi khi tới lượt cắt (`innodb_purge_rseg_truncate_frequency=128`); đặt về 1 thì MySQL xong trong 44–98ms. MariaDB ghi biến đó là `Unused`

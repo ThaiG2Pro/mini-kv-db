@@ -758,6 +758,20 @@ Thời gian và điểm hoà vốn thì chưa chứng minh được: WSL2 hôm �
 ra tỉ số 1.07, hai lượt `breakeven` ra 13.2% và 20.6%. **Còn lại, trả trên Linux thuần**
 (⏱ ~15 phút, máy rảnh): `./scripts/p91-seqscan.sh`, hướng dẫn ở [`linux-phase9.md`](./linux-phase9.md).
 
+**Lượt 2 (2026-10-01, Linux thuần `thai-computer`, diary/phase9.md bảng 12):** `./scripts/p91-seqscan.sh`,
+16 cặp 348f120 ↔ 16a36ed. Trung vị **404 → 357 ns/hàng**, allocs 140021 → 40021, tỉ số theo cặp
+**0.870**, tứ phân vị **[0.846, 0.898]** nằm trọn dưới 1.0: sửa nhanh hơn thật. Hoà vốn (khoá nhảy)
+3 lượt: trước 41.0 / 40.7 / 40.9%, sau **36.5 / 36.7 / 36.5%**. Theo bảng đọc kết quả trong
+`linux-phase9.md` đây là hàng 2: *có tác dụng nhưng chưa đủ*, hoà vốn vẫn ≥ 15%. **Còn lại:** lượt 3
+nhắm con trỏ B+Tree (`db.Iter.Next`, 30% profile, nợ P4-3), rồi chạy lại cùng script. Lưu ý khi đọc:
+lúc đo `mysqld`/`mariadbd` còn ăn 24–28% CPU và governor là `powersave` (xem `bench/p91/.../env.txt`),
+nhưng hai bản trong một cặp chịu cùng điều kiện nên tỉ số vẫn dùng được; số tuyệt đối thì không.
+
+Kiểm lại con số "15 lần" ở tiêu đề: trên cùng máy Linux, Postgres quét 1 triệu hàng ở 100% hết 238 ms
+(~238 ns/hàng, `bench/phase4-9/.../p9-breakeven.txt`), minidb một bước quét 353–365 ns. Hai phép đo không
+cùng phương pháp (bảng 1 tách phí quét khỏi phí tra, số này thì không), nên chưa thay tiêu đề; cần chạy
+lại phép tách của bảng 1 trên Linux để có tỉ số mới.
+
 ### ⏳ P9-2 · `txnlab` chưa có ô "RR kiểu MySQL"
 
 MySQL ở repeatable-read đọc bằng snapshot nhưng `UPDATE` trên bản **mới nhất**, nên để lọt lost
