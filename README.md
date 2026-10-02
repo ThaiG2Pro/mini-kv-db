@@ -44,14 +44,16 @@ một bài crash-test chỉ đáng tin khi nó **biết báo sai**.
 
 Phần tôi tự hào nhất không phải code chạy, mà là **chuỗi giả thuyết sai được ghi lại và bác bỏ bằng số**:
 
-1. **Điểm hoà vốn của index đo được 36.8%**, sách nói 5–20%. Tôi giải thích "vì minidb không có I/O
-   thật". Phase 9 chạy Postgres **cũng trong RAM** và vẫn hoà vốn ở 4.7%. Giải thích sai. Nguyên nhân
-   thật: seq scan của minidb đắt gấp **15x** Postgres cho mỗi hàng (nợ P9-1).
+1. **Điểm hoà vốn của index đo được 36.6%**, sách nói 5–20%. Tôi giải thích "vì minidb không có I/O
+   thật". Phase 9 chạy Postgres / MySQL / MariaDB **cũng trong RAM**, 1 triệu hàng, và vẫn hoà vốn ở
+   **11.7 / 6.6 / 6.1%**. Giải thích sai. Nguyên nhân thật: phí *quét* mỗi hàng của minidb đắt hơn hẳn,
+   trong khi phí *tra* ngang InnoDB (nợ P9-1).
 2. **Trả nợ P9-1** bằng profile: chỗ chậm không nằm ở copy byte (20 ns) mà ở **cấp phát** (~1000 ns,
-   60% là page fault do GC trả trang về OS). Thêm API zero-copy `GetFunc` và sửa đường đọc chuỗi version:
-   Get ở depth 60 từ 5520 ns xuống 828 ns (**85%**). Có A/B benchmark, IQR nằm hẳn dưới 1.0.
+   60% là page fault do GC trả trang về OS). Thêm API zero-copy `GetFunc` và sửa đường đọc chuỗi version.
+   A/B 16 cặp trên Linux thuần: seq scan **404 → 357 ns/hàng**, allocs 140k → 40k, tỉ số theo cặp 0.87,
+   khoảng tứ phân vị [0.85, 0.90] nằm hẳn dưới 1.0. Riêng Get ở depth 60: 5520 → 828 ns (WSL2).
 3. **Một luật optimizer còn thiếu.** Bảng pushdown ở phase 8 cho 1.18x, quá ít. Thiếu luật suy ra
-   điều kiện qua equi-join. Thêm luật: **18.53x**. Lần đầu số đo tìm ra thứ *chưa có*, không phải thứ sai.
+   điều kiện qua equi-join. Thêm luật: **18x**. Lần đầu số đo tìm ra thứ *chưa có*, không phải thứ sai.
 4. **"MariaDB purge nhanh hơn MySQL 40 lần"** hoá ra là **bộ đếm**, không phải purge: MySQL chỉ giảm
    `history_list` khi truncate rollback segment, mỗi 128 batch. Undo thật xong trong ~2 s, bộ đếm treo
    thêm 11–85 s. Ba giả thuyết (số thread, kích thước batch, tần suất truncate) được viết ra *trước* khi
@@ -147,7 +149,8 @@ ROADMAP.md       kế hoạch 10 phase, mỗi phase ghi deliverable chứng minh
 ## Giới hạn, nói thẳng
 
 - Không dùng cho production. Không có network, không có auth, một file một process.
-- Số đo chạy trên WSL2. Tỉ số tin được, số tuyệt đối thì không; `docs/linux-runbook.md` là
-  buổi 2 giờ đo lại mọi thứ trên Linux thuần, có script sẵn.
+- Số trong README đo trên Linux thuần (CachyOS, AMD Ryzen 7 H 255, 2026-10-01), output gốc ở
+  [`bench/`](./bench) theo máy + ngày. Phần lớn bảng trong `diary/` đo trên WSL2 trước đó: tỉ số
+  giữ nguyên, số tuyệt đối lệch. [`docs/linux-runbook.md`](./docs/linux-runbook.md) là buổi 2 giờ đo lại toàn bộ.
 - Torn write thật chưa tái tạo được (`kill -9` không tạo torn write). Công cụ `dm-flakey` đã dựng, chưa chạy trên máy có quyền.
 - Còn các món nợ mở trong [`docs/debts.md`](./docs/debts.md), mỗi món có lệnh để trả.
