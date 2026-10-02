@@ -1,104 +1,153 @@
-# minidb
+# minidb — tự viết một database để hiểu database thật
 
-Một database mini viết bằng Go để học **DB internals** — storage layer, B+Tree, WAL,
-recovery, MVCC, secondary index, query planner và một front-end SQL — chứ không phải để dùng thật.
+> Một relational database mini bằng Go, viết từ `pread`/`fsync` lên tới `EXPLAIN`,
+> để học **DB internals** theo cách duy nhất tôi tin: mỗi phase phải kết thúc bằng
+> **một crash-test hoặc một benchmark** chứng minh mình hiểu, không phải bằng "code chạy được".
 
-- Hướng đi chung: [`ROADMAP.md`](./ROADMAP.md)
-- Nhật ký từng phase: [`diary/`](./diary)
-- Quy tắc ghi nhật ký: [`skills/diary/SKILL.md`](./skills/diary/SKILL.md)
-- Sổ nợ kỹ thuật: [`docs/debts.md`](./docs/debts.md)
-- So với DB thật: [`docs/vs-postgres.md`](./docs/vs-postgres.md), [`docs/vs-innodb.md`](./docs/vs-innodb.md), và các thí nghiệm ở [`reallab/`](./reallab) (phase 9)
-- Series blog cho dev mới: [`blog/`](./blog)
+```sql
+minidb> EXPLAIN SELECT ev.city, dim.name FROM ev JOIN dim ON ev.kind = dim.kind
+        WHERE dim.kind < 5 ORDER BY ev.city;
 
-## Layout
-
-```
-cmd/iolab/      phase 0 — đo đặc tính I/O của máy (fsync, group commit, random vs seq, page cache)
-cmd/tornlab/    phase 0 — dò torn write (dùng cùng scripts/dm-flakey.sh)
-cmd/pagerlab/   phase 1 — soi file: meta page luân phiên, freelist, rollback bằng 1 byte
-cmd/slotlab/    phase 2 — soi một slotted page: bản đồ page, phân mảnh, compact, churn
-cmd/bufferlab/  phase 3 — hit ratio lru/clock/lru-2 vs Belady, sequential flooding
-cmd/btreelab/   phase 4 — hình dạng cây theo thứ tự chèn, fanout, split, xóa và trả page
-cmd/crashlab/   phase 5 — 200 lần kill -9 ngẫu nhiên rồi kiểm durability; -nowrite = bài phản chứng
-cmd/wallab/     phase 5 — soi một file WAL: gồm record gì, bao nhiêu phần trăm là thuế
-cmd/txnlab/     phase 6 — ba bảng: anomaly × mức isolation, chuyển tiền N goroutine, phình version
-cmd/idxlab/     phase 7 — năm bảng: điểm hoà vốn selectivity, thuế của index, hình byte của khóa
-cmd/minidb/     phase 8 — REPL SQL: gõ câu, xem kết quả, xem EXPLAIN cả cây logical lẫn physical
-cmd/sqllab/     phase 8 — sáu bảng: join, hạn mức bộ nhớ, sắp ngoài, pushdown, bỏ Sort, front-end
-cmd/dbcheck/    fsck cho file minidb — meta, freelist, double free, page mồ côi
-reallab/        phase 9 — năm bảng trên Postgres/MySQL/MariaDB thật (module Go riêng + docker-compose)
-blog/           series "Mở nắp database" cho dev mới
-scripts/        linux-baseline.sh (đo baseline có thể so máy), dm-flakey.sh (bơm lỗi thiết bị)
-docs/           debts.md (sổ nợ + lệnh trả từng món), linux-runbook.md (bản đồ) + linux-baseline / phase4-9 / phase9.md (đo trên Linux thuần)
-bench/baseline/ kết quả đo lưu theo máy + ngày (text + JSON)
-internal/pager/ phase 1 — file = mảng page 4KB, meta page kép + crc32c, freelist
-internal/page/  phase 2 — slotted page: record biến độ dài, slot indirection, compact
-internal/bufpool/ phase 3 — buffer pool: pin/unpin, dirty, LRU/CLOCK/LRU-K, WAL hook
-internal/btree/ phase 4 — B+Tree: node = 1 page, split, merge/redistribute, cursor
-internal/wal/   phase 5 — log record + crc32c, diff theo khối, LSN = offset byte, group commit
-internal/db/    phase 5 — transaction (Begin/Commit/Abort), checkpoint mờ, recovery 3 pha ARIES
-internal/lock/  phase 6 — lock manager S2PL: S/X, khóa điểm và khoảng, deadlock qua wait-for graph
-internal/txn/   phase 6 — MVCC: chuỗi version, snapshot, 4 mức isolation, vacuum, deferred write
-internal/keys/  phase 7 — bộ mã hoá khóa giữ thứ tự: composite, ASC/DESC bằng phép bù, canonical
-internal/table/ phase 7 — catalog + nhiều bảng/index trong MỘT cây theo tiền tố oid; bất biến hàng<->index
-internal/query/ phase 7 — 3 kế hoạch (seq/index/index-only), mô hình chi phí, ước lượng selectivity
-internal/sql/   phase 8 — lexer + parser + AST. CHỈ cú pháp: không biết catalog, nên câu sai tên chết ở tầng sau
-internal/plan/  phase 8 — binder (tên/kiểu/logic 3 giá trị) + opt.go (viết lại LOGICAL) + planner.go (chọn đường VẬT LÝ)
-internal/exec/  phase 8 — Volcano/iterator: scan, nested loop, Grace hash join (tràn đĩa), external merge sort
-internal/engine/ phase 8 — ghép cả đường ống; EXPLAIN in CẢ HAI cây, trước và sau optimizer
-diary/          nhật ký học: giả thuyết sai, số đo, invariant
-skills/         quy ước làm việc trong repo (đọc trước khi ghi diary)
+logical (tối ưu):  Project -> Sort -> Join -> Scan ev preds=(ev.kind < 5)   <- điều kiện này
+                                           -> Scan dim preds=(dim.kind < 5)    không có trong câu SQL,
+physical:          Sort budget=4096 hàng                                       optimizer tự suy ra
+                     -> NestedLoopJoin                     (rows≈1  cost≈10)
+                       -> SeqScan ev  filter=(ev.kind < 5) (rows≈5  cost≈5)
+                       -> SeqScan dim [kind < 5]           (rows≈1  cost≈1)   <- quét khoảng trên pk
 ```
 
-## Chạy
+Không dùng thư viện DB nào. Chỉ Go stdlib + syscall. **~32k dòng Go, 191 test, 11 fuzz target,
+10 phase, 13 bài blog, 39 commit trong một tháng** (09/2026).
+
+---
+
+## Dành cho người có 3 phút
+
+| Tôi tự xây | Rồi chứng minh bằng |
+|---|---|
+| **Pager** · file = mảng page 4 KB, 2 meta page luân phiên + crc32c, freelist | 40 điểm crash mô phỏng, mở lại luôn hợp lệ |
+| **Slotted page** · record biến độ dài, compact | 1.42 triệu vòng fuzz, bất biến không vỡ lần nào |
+| **Buffer pool** · pin/unpin, LRU / CLOCK / LRU-K | hit ratio trên zipfian + sequential flooding, so với Belady |
+| **B+Tree** · split, merge, redistribute, cursor | property test 7 bất biến; 1M khóa: chèn ngẫu nhiên tốn **33x** page write so với tăng dần |
+| **WAL + ARIES-lite** · analysis/redo/undo, checkpoint mờ, group commit | **200/200 lần `kill -9`** ngẫu nhiên, 9194 txn đã commit được kiểm. Và bài **phản chứng**: cố tình làm mất log, test **phải đỏ** 10/10 |
+| **MVCC + S2PL** · snapshot, 4 mức isolation, deadlock qua wait-for graph | bảng 5 anomaly × 4 mức khớp lý thuyết từng ô, khẳng định **cả hai chiều** (có anomaly khi lý thuyết nói có, không khi nói không) |
+| **Index + planner** · khóa giữ thứ tự byte, catalog nhiều bảng trong một cây, mô hình chi phí | 3 kế hoạch cho cùng kết quả; điểm hoà vốn selectivity **đo được**, không chép sách |
+| **SQL** · lexer/parser/binder, logical vs physical plan, Grace hash join tràn đĩa, external merge sort, predicate pushdown | hai đường thực thi cho cùng kết quả dưới `-race`; parser fuzz: phải kết thúc, in-lại-đọc-lại phải bền |
+| **Đối chiếu DB thật** · cùng câu hỏi chạy trên Postgres 17 / MySQL 8.4 / MariaDB 11.8 | 11 bảng số, nhiều bảng bác lại chính kết luận của tôi ở phase trước |
+
+Đọc một thứ duy nhất? [`diary/phase5.md`](./diary/phase5.md): WAL, recovery, và vì sao
+một bài crash-test chỉ đáng tin khi nó **biết báo sai**.
+
+---
+
+## Những chỗ tôi đã sai, và số đo đã bắt được
+
+Phần tôi tự hào nhất không phải code chạy, mà là **chuỗi giả thuyết sai được ghi lại và bác bỏ bằng số**:
+
+1. **Điểm hoà vốn của index đo được 36.8%**, sách nói 5–20%. Tôi giải thích "vì minidb không có I/O
+   thật". Phase 9 chạy Postgres **cũng trong RAM** và vẫn hoà vốn ở 4.7%. Giải thích sai. Nguyên nhân
+   thật: seq scan của minidb đắt gấp **15x** Postgres cho mỗi hàng (nợ P9-1).
+2. **Trả nợ P9-1** bằng profile: chỗ chậm không nằm ở copy byte (20 ns) mà ở **cấp phát** (~1000 ns,
+   60% là page fault do GC trả trang về OS). Thêm API zero-copy `GetFunc` và sửa đường đọc chuỗi version:
+   Get ở depth 60 từ 5520 ns xuống 828 ns (**85%**). Có A/B benchmark, IQR nằm hẳn dưới 1.0.
+3. **Một luật optimizer còn thiếu.** Bảng pushdown ở phase 8 cho 1.18x, quá ít. Thiếu luật suy ra
+   điều kiện qua equi-join. Thêm luật: **18.53x**. Lần đầu số đo tìm ra thứ *chưa có*, không phải thứ sai.
+4. **"MariaDB purge nhanh hơn MySQL 40 lần"** hoá ra là **bộ đếm**, không phải purge: MySQL chỉ giảm
+   `history_list` khi truncate rollback segment, mỗi 128 batch. Undo thật xong trong ~2 s, bộ đếm treo
+   thêm 11–85 s. Ba giả thuyết (số thread, kích thước batch, tần suất truncate) được viết ra *trước* khi
+   chạy, hai cái đầu bị bác.
+5. **MySQL để lọt lost update ở REPEATABLE READ**, Postgres không. UUIDv4 làm khóa chính ghi page
+   **26–32x** trên InnoDB nhưng chỉ **~1.3x** trên Postgres (heap không clustered). Cùng tên isolation,
+   cùng tên metric, khác nghĩa.
+
+Toàn bộ ở [`diary/`](./diary) (một file `phaseN.md` chốt + một `phaseN-log.md` ghi theo giờ, cả giả
+thuyết sai) và [`docs/debts.md`](./docs/debts.md): **sổ nợ kỹ thuật**, mỗi món là một thứ tôi biết
+còn thiếu kèm **lệnh để trả nó**, 19 món đã trả, mỗi món còn lại đều có lệnh chạy.
+
+---
+
+## Kiến trúc
 
 ```
-make iolab                          # phase 0: bảng số đo I/O của máy này
-make iolab-full                     # + p50/p99 (repeat 5) + kiểm chứng page cache bằng mincore
-make baseline DIR=/mnt/nvme/iolab   # baseline đầy đủ -> bench/baseline/<host>-<ngày>/
-make pagerlab                       # phase 1: bảng commit + xxd meta page
-make slotlab                        # phase 2: bản đồ page trước/sau xóa và compact
-make fuzz                           # phase 2: fuzz slotted page 120s (chú ý -fuzzminimizetime)
-make bufferlab                      # phase 3: bảng hit ratio + sequential flooding + bản đồ pool
-make fuzz-pool                      # phase 3: fuzz chuỗi thao tác pin/unpin/flush
-make btreelab                       # phase 4: thứ tự chèn -> số split, độ đầy lá, số page
-make bench-btree                    # phase 4: chèn 1 triệu khóa tăng dần vs ngẫu nhiên
-make crashlab                       # phase 5: 20 lần kill -9 (bản nhanh)
-make crashlab-full                  # phase 5: 200 lần kill -9 — bài chốt phase
-make crashlab-nowrite               # phase 5: PHẢI ĐỎ — chứng minh bài test trên biết báo SAI
-make wallab                         # phase 5: một file WAL thật gồm những gì
-make bench-wal                      # phase 5: giá của durability, recovery, diff, đường đọc
-make fuzz-db                        # phase 5: fuzz chuỗi thao tác + crash + mở lại
-make txnlab                         # phase 6: anomaly × mức isolation, chuyển tiền, phình version
-make txnlab-anomaly                 # phase 6: chỉ bảng anomaly (thoát 1 nếu lệch khỏi lý thuyết)
-make txnlab-contention              # phase 6: chỗ MVCC (lạc quan) THUA lock (bi quan)
-make test-txn                       # phase 6: bảng anomaly khẳng định theo CẢ HAI chiều
-make bench-txn                      # phase 6: giá mỗi mức isolation, giá abort, giá phình version
-make fuzz-txn                       # phase 6: codec chuỗi version phải canonical + sống qua crash
-make idxlab                         # phase 7: 5 bảng — hoà vốn selectivity, thuế index, ước lượng
-make idxlab-breakeven               # phase 7: chỉ bảng hoà vốn, 50000 hàng (số ổn định hơn)
-make idxlab-bytes                   # phase 7: hình BYTE của khóa composite — vì sao chỉ tiền tố bên trái
-make test-index                     # phase 7: ba kế hoạch phải cho CÙNG kết quả
-make bench-index                    # phase 7: ba hằng số của mô hình chi phí + giá index ở đường ghi
-make fuzz-keys                      # phase 7: thứ tự byte phải BẰNG thứ tự logic, ở mọi kiểu/chiều sắp
-make fuzz-table                     # phase 7: bất biến hàng<->index phải sống qua crash + mở lại
-make repl                           # phase 8: REPL SQL. Thử: CREATE TABLE t (a INT, b TEXT, PRIMARY KEY (a));
-make sqllab                         # phase 8: 6 bảng — join, hạn mức, sắp ngoài, pushdown, bỏ Sort, front-end
-make sqllab-join                    # phase 8: chỉ bảng nested loop vs hash join (điểm đổi vai ở W≈3)
-make sqllab-budget                  # phase 8: chỗ hash join BUỘC phải tràn ra đĩa, và cái giá
-make sqllab-sort                    # phase 8: cái giá của tràn đĩa là một BẬC THANG, không phải đường dốc
-make test-sql                       # phase 8: HAI ĐƯỜNG PHẢI CHO CÙNG MỘT KẾT QUẢ (-race)
-make fuzz-sql                       # phase 8: parser phải KẾT THÚC, và in-lại-rồi-đọc-lại phải bền
-make fuzz-btree                     # phase 4: fuzz chuỗi Put/Delete, đối chiếu map + Verify()
-make test                           # toàn bộ test (40 điểm crash của pager + bất biến của page)
-make check                          # fsck file data/test.db
+ cmd/minidb REPL ─┐
+                  ▼
+ internal/sql     lexer → parser → AST            CHỈ cú pháp, không biết catalog
+ internal/plan    binder → logical rewrite → physical planner (cost model)
+ internal/exec    Volcano iterator: SeqScan, IndexScan, NestedLoop, GraceHashJoin (tràn đĩa), ExternalSort
+ internal/query   3 kế hoạch seq / index / index-only + ước lượng selectivity
+ internal/table   catalog, nhiều bảng + index trong MỘT B+Tree theo tiền tố oid; bất biến hàng ↔ index
+ internal/keys    mã hoá khóa giữ thứ tự: composite, ASC/DESC bằng phép bù, canonical
+ internal/txn     MVCC: chuỗi version, snapshot, 4 mức isolation, vacuum
+ internal/lock    S2PL: S/X, khóa điểm + khoảng, deadlock detection
+ internal/db      Begin/Commit/Abort, checkpoint mờ, recovery 3 pha ARIES
+ internal/wal     log record + crc32c, diff theo khối, LSN = offset byte, group commit
+ internal/btree   node = 1 page, split / merge / redistribute, cursor
+ internal/bufpool pin/unpin, dirty, LRU / CLOCK / LRU-K, WAL hook (WAL-before-data)
+ internal/page    slotted page
+ internal/pager   file = mảng page 4 KB, meta page kép + crc32c, freelist
+                  pread / pwrite / fsync / posix_fadvise
 ```
 
-**Sang máy Linux thuần?** Làm theo [`docs/linux-runbook.md`](./docs/linux-runbook.md): một buổi khoảng 2 giờ,
-từ `git clone` tới ảnh cho blog. Chi tiết từng phần:
+Thiết kế theo nhánh **B+Tree + WAL, update-in-place** (Postgres / InnoDB / SQLite). Nhánh LSM để sau.
 
-Đo trên máy Linux thuần và trả dần các món nợ của phase 0:
-[`docs/linux-baseline.md`](./docs/linux-baseline.md). Phase 4–9 (mọi tỉ số thời gian): [`docs/linux-phase4-9.md`](./docs/linux-phase4-9.md). Nợ của phase 9 (P9-1, và
-đếm cache miss của hash join, WSL2 không có PMU): [`docs/linux-phase9.md`](./docs/linux-phase9.md).
+Mỗi tầng có một `cmd/*lab` riêng để **soi** nó: `pagerlab` xxd meta page, `wallab` đếm bao nhiêu
+phần trăm file WAL là thuế, `btreelab` vẽ hình cây theo thứ tự chèn, `txnlab` bảng anomaly...
 
-Yêu cầu: Go 1.26+, Linux (dùng `pread`/`pwrite` và `posix_fadvise`).
+---
+
+## Chạy thử trong 5 phút
+
+Yêu cầu: Go 1.26+, Linux (dùng `pread`/`pwrite`, `posix_fadvise`). Phase 9 cần thêm Docker.
+
+```bash
+make test               # toàn bộ unit + property test
+make repl               # REPL SQL. Thử: CREATE TABLE t (a INT, b TEXT, PRIMARY KEY (a));
+make crashlab           # 20 lần kill -9 ngẫu nhiên rồi kiểm durability
+make crashlab-nowrite   # PHẢI ĐỎ: chứng minh bài test trên biết báo sai
+make txnlab-anomaly     # bảng anomaly × isolation, thoát 1 nếu lệch khỏi lý thuyết
+make sqllab-join        # nested loop vs hash join, điểm đổi vai
+```
+
+<details>
+<summary>Toàn bộ target theo phase</summary>
+
+```
+make iolab / iolab-full / baseline DIR=...     phase 0: fsync, group commit, random vs seq, page cache
+make pagerlab                                   phase 1: bảng commit + xxd meta page
+make slotlab / fuzz                             phase 2: bản đồ page, compact; fuzz slotted page
+make bufferlab / fuzz-pool                      phase 3: hit ratio + sequential flooding
+make btreelab / bench-btree / fuzz-btree        phase 4: hình cây, 1M khóa, fuzz đối chiếu map
+make crashlab / crashlab-full / crashlab-nowrite / wallab / bench-wal / fuzz-db      phase 5
+make txnlab / txnlab-anomaly / txnlab-contention / test-txn / bench-txn / fuzz-txn   phase 6
+make idxlab / idxlab-breakeven / idxlab-bytes / test-index / bench-index / fuzz-keys / fuzz-table   phase 7
+make repl / sqllab / sqllab-join / sqllab-budget / sqllab-sort / test-sql / fuzz-sql phase 8
+cd reallab && docker compose up -d && go run . -work breakeven|anomaly|pkorder|bloat|stats|crash|lograte|hashjoin|purge   phase 9
+make check                                      fsck cho file minidb: meta, freelist, double free, page mồ côi
+```
+</details>
+
+---
+
+## Bản đồ repo
+
+```
+internal/        15 package, mỗi package một tầng (xem Kiến trúc)
+cmd/             minidb (REPL), dbcheck (fsck), và một *lab cho mỗi phase
+reallab/         phase 9: module Go riêng + docker-compose, 9 thí nghiệm trên Postgres/MySQL/MariaDB
+diary/           nhật ký học: phaseN.md (chốt, có số) + phaseN-log.md (theo giờ, có giả thuyết sai)
+docs/            debts.md (sổ nợ), vs-postgres.md, vs-innodb.md, linux-runbook.md (đo lại trên Linux thuần)
+blog/            series "Mở nắp database", 13 bài cho dev mới, mỗi bài một câu hỏi và một bảng số
+bench/baseline/  kết quả đo lưu theo máy + ngày
+charts/          plot.py: vẽ biểu đồ cho blog từ output bench
+scripts/         linux-baseline.sh, linux-phase4-9.sh, dm-flakey.sh (bơm lỗi thiết bị để tạo torn write)
+skills/          quy ước làm việc trong repo: đọc trước khi ghi diary
+ROADMAP.md       kế hoạch 10 phase, mỗi phase ghi deliverable chứng minh hiểu
+```
+
+## Giới hạn, nói thẳng
+
+- Không dùng cho production. Không có network, không có auth, một file một process.
+- Số đo chạy trên WSL2. Tỉ số tin được, số tuyệt đối thì không; `docs/linux-runbook.md` là
+  buổi 2 giờ đo lại mọi thứ trên Linux thuần, có script sẵn.
+- Torn write thật chưa tái tạo được (`kill -9` không tạo torn write). Công cụ `dm-flakey` đã dựng, chưa chạy trên máy có quyền.
+- Còn các món nợ mở trong [`docs/debts.md`](./docs/debts.md), mỗi món có lệnh để trả.
